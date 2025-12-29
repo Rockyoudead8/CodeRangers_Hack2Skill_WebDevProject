@@ -20,6 +20,7 @@
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.562.0",
     "mailgen": "^2.0.32",
     "mongoose": "^8.20.2",
     "next": "^16.0.0",

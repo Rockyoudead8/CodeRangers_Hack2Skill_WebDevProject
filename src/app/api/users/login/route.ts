@@ -24,8 +24,11 @@ export async function POST(request: NextRequest) {
 
     // Use custom instance method to validate password
     const isValidPassword = await user.isPasswordCorrect(password);
-    if (!isValidPassword || !user.isEmailVerified) {
-      console.log("Ip");
+    if (!user.isEmailVerified) {
+      console.log("Email not verified");
+    }
+    if (!isValidPassword) {
+      console.log("Invalid password");
       return NextResponse.json({ error: "Invalid Email or Password" }, { status: 400 });
     }
 
