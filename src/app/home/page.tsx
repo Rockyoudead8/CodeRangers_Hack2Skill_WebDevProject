@@ -140,12 +140,23 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { socket } from '../lib/socket'; 
 import { Sparkles, Copy, Check, PlusCircle, Users, KeyRound, ArrowRightCircle } from "lucide-react";
+import useUser from '@/hooks/useUser';
 
 export default function Home() {
+  const { user, loading } = useUser();
+
+  useEffect(() => {
+    if (user) {
+      router.push("/home");
+    }
+    else{
+      router.push("/login");
+    }
+  }, [user, loading]);
   const [roomCode, setRoomCode] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);

@@ -6,9 +6,9 @@
 //     // 'h-screen' makes the div take up the full height of the screen
 //     // 'flex flex-col items-center justify-center' centers the content nicely
 //     <div className="flex flex-col items-center justify-center h-screen gap-4 bg-gray-50">
-      
-  
-      
+
+
+
 //       <p className="text-gray-600">To Continue LogIn/Signup</p>
 
 //       <div className="flex gap-4">
@@ -38,11 +38,24 @@
 
 import { Sparkles, Users, PenTool, ShieldCheck, Zap, ArrowRight } from "lucide-react";
 import Link from "next/link";
-
+import { signInWithPopup } from "firebase/auth";
+import { auth, provider } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
 export default function LandingPage() {
+  const router = useRouter();
+  const loginWithGoogle = async () => {
+    try {
+      const result = await signInWithPopup(auth, provider);
+      console.log("User:", result.user);
+      router.push("/home");
+    } catch (error) {
+      console.log(error);
+      alert("Login failed. Cry quietly and try again.");
+    }
+  };
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-950 text-white">
-      
+
       {/* Navbar */}
       <div className="w-full flex justify-between items-center px-8 py-6 border-b border-gray-800">
         <h1 className="text-2xl font-extrabold tracking-wide text-blue-400">
@@ -50,11 +63,13 @@ export default function LandingPage() {
         </h1>
 
         <div className="flex gap-4">
-          <Link href="/login">
-            <button className="px-4 py-2 border border-gray-700 rounded-lg hover:bg-gray-800 transition">
-              Login
-            </button>
-          </Link>
+
+          <button
+            onClick={loginWithGoogle}
+            className="px-4 py-2 border border-gray-700 rounded-lg hover:bg-gray-800 transition">
+            Login
+          </button>
+
 
           <Link href="/signup">
             <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition font-semibold">

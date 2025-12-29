@@ -2,11 +2,16 @@
 
 import { useEffect, useRef, useState, createRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { socket } from '../../lib/socket'; 
+import { socket } from '../../lib/socket';
 import Board from './Board';
 import IBoard from './IBoard';
+
+import { saveBoard, subscribeToBoard } from "@/lib/roomService";
 
 type Position = { x: number; y: number };
 
@@ -15,7 +20,7 @@ type BoardData = {
   type: 'text' | 'image';
   name: string;
   position: Position;
-  content: string; 
+  content: string;
 };
 
 interface WhiteboardProps {
@@ -24,7 +29,7 @@ interface WhiteboardProps {
 }
 
 export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
-  
+
   const router = useRouter();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -32,7 +37,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const userIdRef = useRef(userEmail);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Drawing State ---
   const [selectedTool, setSelectedTool] = useState('pencil');
   const [selectedColor, setSelectedColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(2);
@@ -41,57 +45,155 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [startY, setStartY] = useState(0);
   const [imageData, setImageData] = useState<ImageData | null>(null);
 
-  // --- UI State ---
   const [isToolbarVisible, setIsToolbarVisible] = useState(true);
-  
-  // --- DATA STATES ---
-  const [boards, setBoards] = useState<BoardData[]>([]); 
-  const [images, setImages] = useState<BoardData[]>([]); 
-  
+  const [boards, setBoards] = useState<BoardData[]>([]);
+  const [images, setImages] = useState<BoardData[]>([]);
   const itemRefs = useRef<any>({});
-  
   const [users, setUsers] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
 
-  // ==========================================
-  // 1. LOGOUT LOGIC (With Disconnect)
-  // ==========================================
-  const handleLogout = async () => {
-    try {
-      // 1. Force socket disconnect so other users see the update immediately
-      socket.disconnect();
 
-      await axios.get('/api/users/logout');
-      toast.success('Logout successful');
-      router.push('/login');
-    } catch (error: any) {
-      console.error("Logout failed", error.message);
-      toast.error(error.message || "Logout failed");
+  const handleSaveToDrive = async () => {
+    try {
+      const token = localStorage.getItem("drive_token");
+      if (!token) return alert("Login again with Google to enable Drive access");
+
+      const canvas = canvasRef.current;
+      if (!canvas) return alert("Canvas missing… like hope in my life");
+
+      const blob = await new Promise<Blob>((resolve) =>
+        canvas.toBlob((b) => resolve(b!), "image/png")
+      );
+
+      const metadata = {
+        name: `whiteboard-${roomId}.png`,
+        mimeType: "image/png"
+      };
+
+      const form = new FormData();
+      form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+      form.append("file", blob);
+
+      const res = await fetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: form
+        }
+      );
+
+      const result = await res.json();
+      console.log(result);
+
+      alert("Saved to Google Drive 🎉");
+
+    } catch (e) {
+      console.error(e);
+      alert("Drive upload failed. Technology hates you today.");
     }
   };
 
+
   // ==========================================
-  // 2. SOCKET & DATA SYNC LOGIC
+  // ⭐ FIRESTORE PERSISTENCE HELPERS
   // ==========================================
+
+  function exportBoardData() {
+    const canvas = canvasRef.current;
+    let image = null;
+
+    if (canvas) {
+      image = canvas.toDataURL("image/png");
+    }
+
+    return {
+      canvas: image,
+      boards,
+      images
+    };
+  }
+
+  function loadBoardFromData(data: any) {
+    if (!data) return;
+
+    console.log("📥 Restoring board from Firestore", data);
+
+    // Restore Canvas
+    if (data.canvas) {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (canvas && ctx) {
+        const img = new Image();
+        img.src = data.canvas;
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        };
+      }
+    }
+
+    // Restore text/image boards
+    if (data.boards) setBoards(data.boards);
+    if (data.images) setImages(data.images);
+  }
+
+  let lastSave = 0;
+  function saveThrottled() {
+    const now = Date.now();
+    if (now - lastSave > 1500) {
+      lastSave = now;
+      console.log("💾 Saving board to Firestore...");
+      saveBoard(roomId, exportBoardData());
+    }
+  }
+
+  // ==========================================
+  // LOGOUT
+  // ==========================================
+
+
+  const handleLogout = async () => {
+    try {
+      socket.disconnect();
+      await signOut(auth);
+      localStorage.removeItem("drive_token"); // optional cleanup
+      router.push("/login");
+    } catch (error) {
+      console.error("Logout failed", error);
+      alert("Logout failed. Life remains disappointing.");
+    }
+  };
+
+
+  // ==========================================
+  // SOCKET + FIRESTORE SUBSCRIPTION
+  // ==========================================
+  useEffect(() => {
+    if (!roomId) return;
+
+    // 🔥 Firestore Realtime Sync
+    const unsub = subscribeToBoard(roomId, (data) => {
+      loadBoardFromData(data);
+    });
+
+    return () => unsub();
+  }, [roomId]);
 
   useEffect(() => {
     if (!roomId) return;
-    
-    // 2. Ensure we connect/reconnect when mounting this component
-    if (!socket.connected) {
-        socket.connect();
-    }
 
+    if (!socket.connected) socket.connect();
     userIdRef.current = userEmail;
     const userId = userIdRef.current;
 
     console.log(`Joining room ${roomId} as ${userId}`);
-
     socket.emit('userJoined', { userId, roomId });
 
-    // --- CANVAS HANDLERS ---
-    const handleDraw = ({ roomId: incomingRoom, image }: { roomId: string; image: string | null; }) => {
+    const handleDraw = ({ roomId: incomingRoom, image }: any) => {
       if (incomingRoom !== roomId) return;
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');
@@ -114,90 +216,30 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       if (userList) setUsers(userList);
     };
 
-    // --- TEXT BOARD HANDLERS ---
-    const handleBoardsSync = (serverBoards: BoardData[]) => setBoards(serverBoards || []);
-    
-    const handleBoardAdd = (newBoard: BoardData) => {
-      setBoards((prev) => {
-        if (prev.find(b => b.id === newBoard.id)) return prev;
-        return [...prev, newBoard];
-      });
-    };
-
-    const handleBoardUpdate = (updatedBoard: BoardData) => {
-      setBoards((prev) => prev.map((b) => (b.id === updatedBoard.id ? updatedBoard : b)));
-    };
-
-    const handleBoardDelete = (boardId: string | number) => {
-        setBoards((prev) => prev.filter(b => b.id !== boardId));
-    };
-
-    // --- IMAGE HANDLERS ---
-    const handleImagesSync = (serverImages: BoardData[]) => setImages(serverImages || []);
-
-    const handleImageAdd = (newImage: BoardData) => {
-      setImages((prev) => {
-        if (prev.find(img => img.id === newImage.id)) return prev;
-        return [...prev, newImage];
-      });
-    };
-
-    const handleImageUpdate = (updatedImage: BoardData) => {
-      setImages((prev) => prev.map((img) => (img.id === updatedImage.id ? updatedImage : img)));
-    };
-
-    const handleImageDelete = (imageId: string | number) => {
-      setImages((prev) => prev.filter(img => img.id !== imageId));
-    };
-
-    // Listeners
     socket.on('draw', handleDraw);
     socket.on('userIsJoined', handleUserList);
     socket.on('allUsers', handleUserList);
-    
-    // Text Boards
-    socket.on('boards:sync', handleBoardsSync);
-    socket.on('board:add', handleBoardAdd);
-    socket.on('board:update', handleBoardUpdate);
-    socket.on('board:delete', handleBoardDelete);
-
-    // Images
-    socket.on('images:sync', handleImagesSync);
-    socket.on('image:add', handleImageAdd);
-    socket.on('image:update', handleImageUpdate);
-    socket.on('image:delete', handleImageDelete);
 
     return () => {
-      // 3. CLEANUP: Disconnect socket when unmounting (leaving page)
       socket.disconnect();
-
       socket.off('draw', handleDraw);
       socket.off('userIsJoined', handleUserList);
       socket.off('allUsers', handleUserList);
-      
-      socket.off('boards:sync', handleBoardsSync);
-      socket.off('board:add', handleBoardAdd);
-      socket.off('board:update', handleBoardUpdate);
-      socket.off('board:delete', handleBoardDelete);
-
-      socket.off('images:sync', handleImagesSync);
-      socket.off('image:add', handleImageAdd);
-      socket.off('image:update', handleImageUpdate);
-      socket.off('image:delete', handleImageDelete);
     };
-  }, [roomId, userEmail]); 
 
+  }, [roomId, userEmail]);
 
   // ==========================================
-  // 3. CANVAS DRAWING LOGIC
+  // CANVAS DRAWING  ⭐ SAVE TO FIRESTORE WHEN DONE
   // ==========================================
-
   const emitCanvasImage = () => {
     const canvas = canvasRef.current;
     if (!canvas || !roomId) return;
     const image = canvas.toDataURL('image/png');
     socket.emit('draw', { roomId, image });
+    saveThrottled(); // ⭐ SAVE HERE
   };
+
 
   const undo = () => socket.emit('undo', { roomId });
   const redo = () => socket.emit('redo', { roomId });
@@ -364,8 +406,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          const MAX_DIM = 800; 
-          
+          const MAX_DIM = 800;
+
           if (width > height) {
             if (width > MAX_DIM) { height *= MAX_DIM / width; width = MAX_DIM; }
           } else {
@@ -389,7 +431,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
     try {
       const base64Image = await resizeImage(file);
-      
+
       const newImage: BoardData = {
         id: Date.now(),
         type: 'image',
@@ -404,43 +446,43 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       console.error("Image processing failed", err);
       alert("Could not process image.");
     }
-    
+
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const updateItemPosition = (id: number | string, newPosition: Position, type: 'text' | 'image') => {
     if (type === 'text') {
-        const board = boards.find(b => b.id === id);
-        if (board) {
-            const updated = { ...board, position: newPosition };
-            setBoards(prev => prev.map(b => b.id === id ? updated : b));
-            socket.emit('board:update', { roomId, boardData: updated });
-        }
+      const board = boards.find(b => b.id === id);
+      if (board) {
+        const updated = { ...board, position: newPosition };
+        setBoards(prev => prev.map(b => b.id === id ? updated : b));
+        socket.emit('board:update', { roomId, boardData: updated });
+      }
     } else {
-        const img = images.find(i => i.id === id);
-        if (img) {
-            const updated = { ...img, position: newPosition };
-            setImages(prev => prev.map(i => i.id === id ? updated : i));
-            socket.emit('image:update', { roomId, imageData: updated });
-        }
+      const img = images.find(i => i.id === id);
+      if (img) {
+        const updated = { ...img, position: newPosition };
+        setImages(prev => prev.map(i => i.id === id ? updated : i));
+        socket.emit('image:update', { roomId, imageData: updated });
+      }
     }
   };
 
   const updateItemName = (id: number | string, newName: string, type: 'text' | 'image') => {
     if (type === 'text') {
-        const board = boards.find(b => b.id === id);
-        if (board) {
-            const updated = { ...board, name: newName };
-            setBoards(prev => prev.map(b => b.id === id ? updated : b));
-            socket.emit('board:update', { roomId, boardData: updated });
-        }
+      const board = boards.find(b => b.id === id);
+      if (board) {
+        const updated = { ...board, name: newName };
+        setBoards(prev => prev.map(b => b.id === id ? updated : b));
+        socket.emit('board:update', { roomId, boardData: updated });
+      }
     } else {
-        const img = images.find(i => i.id === id);
-        if (img) {
-            const updated = { ...img, name: newName };
-            setImages(prev => prev.map(i => i.id === id ? updated : i));
-            socket.emit('image:update', { roomId, imageData: updated });
-        }
+      const img = images.find(i => i.id === id);
+      if (img) {
+        const updated = { ...img, name: newName };
+        setImages(prev => prev.map(i => i.id === id ? updated : i));
+        socket.emit('image:update', { roomId, imageData: updated });
+      }
     }
   };
 
@@ -453,13 +495,13 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   };
 
   const emitDeleteItem = (id: number | string, type: 'text' | 'image') => {
-      if (type === 'text') {
-          socket.emit('board:delete', { roomId, boardId: id });
-          setBoards((prev) => prev.filter(b => b.id !== id));
-      } else {
-          socket.emit('image:delete', { roomId, imageId: id });
-          setImages((prev) => prev.filter(img => img.id !== id));
-      }
+    if (type === 'text') {
+      socket.emit('board:delete', { roomId, boardId: id });
+      setBoards((prev) => prev.filter(b => b.id !== id));
+    } else {
+      socket.emit('image:delete', { roomId, imageId: id });
+      setImages((prev) => prev.filter(img => img.id !== id));
+    }
   };
 
   const handleDragStart = (item: BoardData, e: React.MouseEvent) => {
@@ -468,7 +510,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     const itemRef = itemRefs.current[id]?.current;
     const container = containerRef.current;
     if (!itemRef || !container) return;
-    
+
     const itemRect = itemRef.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
     const offsetX = e.clientX - itemRect.left;
@@ -547,13 +589,13 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
   return (
     <div className="bg-gray-50 min-h-screen flex flex-col font-sans">
-      
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleImageUpload} 
-        accept="image/*" 
-        className="hidden" 
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        accept="image/*"
+        className="hidden"
       />
 
       {/* HEADER */}
@@ -582,14 +624,14 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                       {user.id ? user.id.charAt(0).toUpperCase() : '?'}
                     </div>
                     <span className="text-sm text-gray-600 truncate max-w-[120px]" title={user.id}>
-                        {user.id}
+                      {user.id}
                     </span>
                   </li>
                 ))}
               </ul>
             </div>
           </div>
-          
+
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 bg-gray-900 hover:bg-black text-white text-sm font-medium px-4 py-2 rounded-lg"
@@ -597,8 +639,15 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             Add Board
           </button>
 
+          <button
+            onClick={handleSaveToDrive}
+            className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm"
+          >
+            Save to Google Drive
+          </button>
+
           {/* LOGOUT BUTTON */}
-          <button 
+          <button
             onClick={handleLogout}
             className="bg-red-500 hover:bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm"
           >
@@ -651,38 +700,38 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         <canvas ref={canvasRef} className="absolute top-0 left-0 block w-full" />
 
         <div className="absolute inset-0 z-10 w-full h-full pointer-events-none">
-          
+
           {/* RENDER TEXT BOARDS */}
           {boards.map((board) => (
             <div key={board.id} className="pointer-events-auto absolute">
-                 <Board
-                    ref={itemRefs.current[board.id] ? itemRefs.current[board.id] : (itemRefs.current[board.id] = createRef())}
-                    id={board.id} 
-                    name={board.name}
-                    initialPos={board.position}
-                    content={board.content}
-                    onContentChange={(newContent) => updateBoardContent(board.id, newContent)}
-                    onMouseDown={(e) => handleDragStart(board, e)}
-                    onRename={(newName) => updateItemName(board.id, newName, 'text')}
-                    onDelete={() => emitDeleteItem(board.id, 'text')} 
-                  />
+              <Board
+                ref={itemRefs.current[board.id] ? itemRefs.current[board.id] : (itemRefs.current[board.id] = createRef())}
+                id={board.id}
+                name={board.name}
+                initialPos={board.position}
+                content={board.content}
+                onContentChange={(newContent) => updateBoardContent(board.id, newContent)}
+                onMouseDown={(e) => handleDragStart(board, e)}
+                onRename={(newName) => updateItemName(board.id, newName, 'text')}
+                onDelete={() => emitDeleteItem(board.id, 'text')}
+              />
             </div>
           ))}
 
           {/* RENDER IMAGES */}
           {images.map((img) => (
-             <div key={img.id} className="pointer-events-auto absolute">
-                 <IBoard
-                    ref={itemRefs.current[img.id] ? itemRefs.current[img.id] : (itemRefs.current[img.id] = createRef())}
-                    id={img.id}
-                    name={img.name}
-                    initialPos={img.position}
-                    content={img.content}
-                    onMouseDown={(e) => handleDragStart(img, e)}
-                    onRename={(newName) => updateItemName(img.id, newName, 'image')}
-                    onDelete={() => emitDeleteItem(img.id, 'image')}
-                  />
-             </div>
+            <div key={img.id} className="pointer-events-auto absolute">
+              <IBoard
+                ref={itemRefs.current[img.id] ? itemRefs.current[img.id] : (itemRefs.current[img.id] = createRef())}
+                id={img.id}
+                name={img.name}
+                initialPos={img.position}
+                content={img.content}
+                onMouseDown={(e) => handleDragStart(img, e)}
+                onRename={(newName) => updateItemName(img.id, newName, 'image')}
+                onDelete={() => emitDeleteItem(img.id, 'image')}
+              />
+            </div>
           ))}
 
         </div>
@@ -737,26 +786,26 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
           <div className="flex md:flex-col flex-row gap-2 items-center">
             <input type="color" value={selectedColor} onChange={(e) => setSelectedColor(e.target.value)} className="w-8 h-8 rounded-full border-2 border-white cursor-pointer" />
-            <input 
-              type="range" 
-              min="1" 
-              max="20" 
-              value={brushSize} 
-              onChange={(e) => setBrushSize(Number(e.target.value))} 
-              className="md:w-1.5 md:h-20 w-20 h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer" 
-              style={{ writingMode: typeof window !== 'undefined' && window.innerWidth >= 768 ? 'vertical-lr' : 'horizontal-tb' } as any} 
+            <input
+              type="range"
+              min="1"
+              max="20"
+              value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+              className="md:w-1.5 md:h-20 w-20 h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer"
+              style={{ writingMode: typeof window !== 'undefined' && window.innerWidth >= 768 ? 'vertical-lr' : 'horizontal-tb' } as any}
             />
           </div>
 
           <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
 
-          <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="p-1 rounded-xl flex items-center justify-center transition-all hover:bg-gray-100 text-gray-500"
-              title="Upload Image"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-            </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-1 rounded-xl flex items-center justify-center transition-all hover:bg-gray-100 text-gray-500"
+            title="Upload Image"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+          </button>
 
           <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
 
