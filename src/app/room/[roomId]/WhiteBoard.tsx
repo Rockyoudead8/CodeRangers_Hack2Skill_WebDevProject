@@ -57,10 +57,10 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const handleSaveToDrive = async () => {
     try {
       const token = localStorage.getItem("drive_token");
-      if (!token) return alert("Login again with Google to enable Drive access");
+      if (!token) return toast.error("Login again with Google to enable Drive access");
 
       const canvas = canvasRef.current;
-      if (!canvas) return alert("Canvas missing… like hope in my life");
+      if (!canvas) return toast.error("Canvas missing… like hope in my life");
 
       const blob = await new Promise<Blob>((resolve) =>
         canvas.toBlob((b) => resolve(b!), "image/png")
@@ -89,11 +89,11 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       const result = await res.json();
       console.log(result);
 
-      alert("Saved to Google Drive 🎉");
+      toast.success("Saved to Google Drive 🎉");
 
     } catch (e) {
       console.error(e);
-      alert("Drive upload failed. Technology hates you today.");
+      toast.error("Drive upload failed. Technology hates you today.");
     }
   };
 
@@ -160,11 +160,11 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     try {
       socket.disconnect();
       await signOut(auth);
-      localStorage.removeItem("drive_token"); // optional cleanup
+      localStorage.removeItem("drive_token"); 
       router.push("/login");
     } catch (error) {
       console.error("Logout failed", error);
-      alert("Logout failed. Life remains disappointing.");
+      toast.error("Logout failed. Life remains disappointing.");
     }
   };
 
@@ -444,7 +444,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       socket.emit('image:add', { roomId, imageData: newImage });
     } catch (err) {
       console.error("Image processing failed", err);
-      alert("Could not process image.");
+      toast.error("Could not process image.");
     }
 
     if (fileInputRef.current) fileInputRef.current.value = "";
