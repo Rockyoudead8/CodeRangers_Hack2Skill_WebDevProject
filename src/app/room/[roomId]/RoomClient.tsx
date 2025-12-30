@@ -1,4 +1,6 @@
-'use client';
+//src/app/room/[roomId]/RoomClient.tsx
+
+"use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -20,7 +22,6 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
     console.log("🔥 Creating Firestore Room:", roomId);
     createRoom(roomId, user);
-
   }, [user, loading, roomId, router]);
 
   if (loading) {
@@ -33,10 +34,5 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
   if (!user) return null;
 
-  return (
-    <Whiteboard
-      roomId={roomId}
-      userEmail={user.email ?? "anonymous"}
-    />
-  );
+  return <Whiteboard roomId={roomId} userEmail={user.email ?? "anonymous"} />;
 }

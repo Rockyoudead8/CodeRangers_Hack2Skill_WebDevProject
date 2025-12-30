@@ -1,3 +1,5 @@
+//src\helpers\mailer.ts
+
 import nodemailer from "nodemailer";
 
 // Type definitions for mail content and sendEmail options
@@ -110,18 +112,24 @@ const sendEmail = async (options: SendEmailOptions): Promise<void> => {
     await transporter.sendMail(mail);
   } catch (error) {
     console.error(
-      "Email service failed silently. Make sure that MAILTRAP credentials are set in the .env file.",
+      "Email service failed silently. Make sure that MAILTRAP credentials are set in the .env file."
     );
     console.error("Error:", error);
   }
 };
 
 // Exposed email content generators with type compatibility for your existing usage
-function emailVerificationMailgenContent(username: string, verificationUrl: string) {
+function emailVerificationMailgenContent(
+  username: string,
+  verificationUrl: string
+) {
   return buildVerificationContent({ username, link: verificationUrl });
 }
 
-function forgotPasswordMailgenContent(username: string, passwordResetUrl: string) {
+function forgotPasswordMailgenContent(
+  username: string,
+  passwordResetUrl: string
+) {
   return buildForgotPasswordContent({ username, link: passwordResetUrl });
 }
 

@@ -1,0 +1,39 @@
+📦src
+ ┣ 📂app
+ ┃ ┣ 📂home
+ ┃ ┃ ┣ 📜layout.tsx
+ ┃ ┃ ┗ 📜page.tsx
+ ┃ ┣ 📂lib
+ ┃ ┃ ┗ 📜socket.ts
+ ┃ ┣ 📂login
+ ┃ ┃ ┣ 📂email
+ ┃ ┃ ┃ ┗ 📜page.tsx
+ ┃ ┃ ┗ 📜page.tsx
+ ┃ ┣ 📂room
+ ┃ ┃ ┗ 📂[roomId]
+ ┃ ┃ ┃ ┣ 📜Board.tsx
+ ┃ ┃ ┃ ┣ 📜IBoard.tsx
+ ┃ ┃ ┃ ┣ 📜layout.tsx
+ ┃ ┃ ┃ ┣ 📜page.tsx
+ ┃ ┃ ┃ ┣ 📜pageold.tsx
+ ┃ ┃ ┃ ┣ 📜RoomClient.tsx
+ ┃ ┃ ┃ ┗ 📜WhiteBoard.tsx
+ ┃ ┣ 📂signup
+ ┃ ┃ ┗ 📜page.tsx
+ ┃ ┣ 📂verifyEmail
+ ┃ ┃ ┗ 📂[hashedToken]
+ ┃ ┃ ┃ ┗ 📜page.tsx
+ ┃ ┣ 📜favicon.ico
+ ┃ ┣ 📜globals.css
+ ┃ ┣ 📜layout.tsx
+ ┃ ┗ 📜page.tsx
+ ┣ 📂helpers
+ ┃ ┗ 📜mailer.ts
+ ┣ 📂hooks
+ ┃ ┗ 📜useUser.ts
+ ┣ 📂lib
+ ┃ ┣ 📜firebase.ts
+ ┃ ┗ 📜roomService.ts
+ ┣ 📂utils
+ ┃ ┗ 📜user.js
+ ┗ 📜proxy.ts

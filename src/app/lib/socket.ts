@@ -1,7 +1,9 @@
-'use client';
+//src/app/lib/socket.ts
 
-import { io } from 'socket.io-client';
+"use client";
 
-export const socket = io('http://localhost:3000', {
+import { io } from "socket.io-client";
+
+export const socket = io("http://localhost:3000", {
   autoConnect: true,
 });

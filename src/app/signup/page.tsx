@@ -1,30 +1,52 @@
+//src\app\signup\page.tsx
+
 "use client";
 import React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
-import { FaCheckCircle, FaTimesCircle, FaEye, FaEyeSlash } from "react-icons/fa";
+import {
+  FaCheckCircle,
+  FaTimesCircle,
+  FaEye,
+  FaEyeSlash,
+} from "react-icons/fa";
 import toast from "react-hot-toast";
 
 const passwordCriteria = [
-  { label: "At least 10 characters", test: (pw:any) => pw.length >= 10 },
-  { label: "At least one uppercase letter", test: (pw:any) => /[A-Z]/.test(pw) },
-  { label: "At least one lowercase letter", test: (pw:any) => /[a-z]/.test(pw) },
-  { label: "At least one number", test: (pw:any) => /[0-9]/.test(pw) },
-  { label: "At least one special character", test: (pw:any) => /[!@#$%^&*(),.?\":{}|<>]/.test(pw) },
+  { label: "At least 10 characters", test: (pw: any) => pw.length >= 10 },
+  {
+    label: "At least one uppercase letter",
+    test: (pw: any) => /[A-Z]/.test(pw),
+  },
+  {
+    label: "At least one lowercase letter",
+    test: (pw: any) => /[a-z]/.test(pw),
+  },
+  { label: "At least one number", test: (pw: any) => /[0-9]/.test(pw) },
+  {
+    label: "At least one special character",
+    test: (pw: any) => /[!@#$%^&*(),.?\":{}|<>]/.test(pw),
+  },
 ];
 
 export default function SignupPage() {
   const router = useRouter();
-  const [user, setUser] = React.useState({ email: "", password: "", username: "" });
+  const [user, setUser] = React.useState({
+    email: "",
+    password: "",
+    username: "",
+  });
   const [darkMode, setDarkMode] = React.useState(false);
   const [disable, setDisable] = React.useState(true);
   const [isEmail, setIsEmail] = React.useState(true);
-  const [passwordChecks, setPasswordChecks] = React.useState(passwordCriteria.map(() => false));
+  const [passwordChecks, setPasswordChecks] = React.useState(
+    passwordCriteria.map(() => false)
+  );
   const [showPassword, setShowPassword] = React.useState(false);
   const [showCriteria, setShowCriteria] = React.useState(false);
 
-  function validateEmail(email:any) {
+  function validateEmail(email: any) {
     return /\S+@\S+\.\S+/.test(email);
   }
 
@@ -39,13 +61,15 @@ export default function SignupPage() {
 
   React.useEffect(() => {
     const allPasswordValid = passwordChecks.every(Boolean);
-    setDisable(!(
-      user.email.length > 0 &&
-      user.username.length > 0 &&
-      user.password.length > 0 &&
-      isEmail &&
-      allPasswordValid
-    ));
+    setDisable(
+      !(
+        user.email.length > 0 &&
+        user.username.length > 0 &&
+        user.password.length > 0 &&
+        isEmail &&
+        allPasswordValid
+      )
+    );
   }, [user, isEmail, passwordChecks]);
 
   const onSingUp = async () => {
@@ -53,9 +77,9 @@ export default function SignupPage() {
       const response = await axios.post("/api/users/signup", user);
       console.log("Success : \n", response.data);
       setTimeout(() => {
-          router.push("/login");
-        }, 5000);
-    } catch (error:any) {
+        router.push("/login");
+      }, 5000);
+    } catch (error: any) {
       console.log("Sign Up Failed.", error.message);
       toast.error(error.message);
     }
@@ -66,11 +90,18 @@ export default function SignupPage() {
     const isAllFullfilled = passwordChecks.every(Boolean);
     return isAllFullfilled
       ? { text: "All password criteria fulfilled.", color: "text-green-600" }
-      : { text: "Password criteria is not fulfilled. See criteria.", color: "text-red-600" };
+      : {
+          text: "Password criteria is not fulfilled. See criteria.",
+          color: "text-red-600",
+        };
   })();
 
   return (
-    <div className={`${darkMode ? "dark" : ""} min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 relative transition-colors`}>
+    <div
+      className={`${
+        darkMode ? "dark" : ""
+      } min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 relative transition-colors`}
+    >
       <button
         className="absolute top-6 left-6 flex items-center gap-2 px-3 py-2 rounded bg-white dark:bg-gray-800 shadow hover:shadow-md transition"
         onClick={() => setDarkMode((v) => !v)}
@@ -78,7 +109,9 @@ export default function SignupPage() {
         {darkMode ? "🌙 Dark" : "☀️ Light"}
       </button>
       <div className="w-full max-w-md p-8 bg-white dark:bg-gray-800 rounded-xl shadow-lg flex flex-col gap-6">
-        <h1 className="text-2xl font-semibold text-center text-gray-900 dark:text-gray-100 mb-2">Sign Up</h1>
+        <h1 className="text-2xl font-semibold text-center text-gray-900 dark:text-gray-100 mb-2">
+          Sign Up
+        </h1>
         <div className="flex flex-col gap-4">
           {/* Username input and reserved message space */}
           <label className="flex flex-col gap-1">
@@ -138,7 +171,11 @@ export default function SignupPage() {
                 type="button"
                 className={`text-xs font-medium underline cursor-pointer transition-all duration-300 ease-in-out
                   ${passwordMsg?.color}
-                  ${passwordMsg && user.password.length > 0 ? "opacity-100 max-h-10" : "opacity-0 max-h-0 pointer-events-none"}
+                  ${
+                    passwordMsg && user.password.length > 0
+                      ? "opacity-100 max-h-10"
+                      : "opacity-0 max-h-0 pointer-events-none"
+                  }
                 `}
                 style={{ outline: "none" }}
                 onClick={() => setShowCriteria((v) => !v)}
@@ -148,14 +185,20 @@ export default function SignupPage() {
               </button>
               <div
                 className={`transition-all duration-300 ease-in-out overflow-hidden
-                  ${showCriteria ? "max-h-40 opacity-100 mt-2" : "max-h-0 opacity-0"}
+                  ${
+                    showCriteria
+                      ? "max-h-40 opacity-100 mt-2"
+                      : "max-h-0 opacity-0"
+                  }
                 `}
               >
                 <ul className="flex flex-col gap-1 text-xs">
                   {passwordCriteria.map((crit, i) => (
                     <li
                       key={i}
-                      className={`flex items-center gap-1 ${passwordChecks[i] ? "text-green-600" : "text-red-600"}`}
+                      className={`flex items-center gap-1 ${
+                        passwordChecks[i] ? "text-green-600" : "text-red-600"
+                      }`}
                     >
                       {passwordChecks[i] ? (
                         <FaCheckCircle className="inline-block" />
@@ -179,7 +222,10 @@ export default function SignupPage() {
         </div>
         <div className="text-center text-gray-600 dark:text-gray-300 text-sm">
           Already have an account?
-          <Link href="/login" className="underline ml-1 text-blue-600 dark:text-blue-400">
+          <Link
+            href="/login"
+            className="underline ml-1 text-blue-600 dark:text-blue-400"
+          >
             Sign In
           </Link>
         </div>

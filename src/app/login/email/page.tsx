@@ -1,11 +1,13 @@
-'use client';
+//src\app\login\email\page.tsx
+
+"use client";
 
 import { useState, useEffect } from "react";
 import { auth } from "@/lib/firebase";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
@@ -41,7 +43,6 @@ export default function EmailAuthPage() {
       }
 
       router.push("/home");
-
     } catch (err: any) {
       console.error(err);
       alert(err.message || "Authentication failed. Technology hates you.");
@@ -63,19 +64,17 @@ export default function EmailAuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-black text-white">
       <div className="bg-gray-900 p-8 rounded-2xl border border-gray-700 w-full max-w-md">
-
         <h1 className="text-3xl font-bold text-center mb-6">
           {mode === "login" ? "Login" : "Create Account"}
         </h1>
 
         <div className="space-y-4">
-
           <input
             type="email"
             placeholder="Email"
             className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 outline-none"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
           />
 
           <input
@@ -83,7 +82,7 @@ export default function EmailAuthPage() {
             placeholder="Password"
             className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 outline-none"
             value={password}
-            onChange={e => setPassword(e.target.value)}
+            onChange={(e) => setPassword(e.target.value)}
           />
 
           <button

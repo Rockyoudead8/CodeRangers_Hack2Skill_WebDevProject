@@ -1,4 +1,6 @@
-'use client';
+//src\app\login\page.tsx
+
+"use client";
 
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -29,7 +31,6 @@ export default function Login() {
 
       console.log("User:", result.user);
       router.push("/home");
-
     } catch (error) {
       console.error("Google Login Failed", error);
       alert("Login failed. Technology is mean sometimes.");
@@ -51,7 +52,8 @@ export default function Login() {
         </button>
 
         <p className="text-center text-sm text-gray-400 mt-4">
-          Secure Google Sign-In. We only request Drive access to save your boards.
+          Secure Google Sign-In. We only request Drive access to save your
+          boards.
         </p>
       </div>
     </div>

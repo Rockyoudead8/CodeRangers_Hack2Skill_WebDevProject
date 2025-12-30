@@ -1,8 +1,12 @@
+//src\utils\user.js
+
 const users = [];
 
 export function userJoin(userData) {
   // Check if user exists
-  const index = users.findIndex(u => u.id === userData.id && u.roomId === userData.roomId);
+  const index = users.findIndex(
+    (u) => u.id === userData.id && u.roomId === userData.roomId
+  );
 
   if (index !== -1) {
     // If user exists, replace them (updates the socketId)

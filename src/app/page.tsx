@@ -1,3 +1,5 @@
+//src\app\page.tsx
+
 // import React from 'react';
 // import Link from 'next/link';
 
@@ -7,22 +9,20 @@
 //     // 'flex flex-col items-center justify-center' centers the content nicely
 //     <div className="flex flex-col items-center justify-center h-screen gap-4 bg-gray-50">
 
-
-
 //       <p className="text-gray-600">To Continue LogIn/Signup</p>
 
 //       <div className="flex gap-4">
 //         {/* Login Link */}
-//         <Link 
-//           href="/login" 
+//         <Link
+//           href="/login"
 //           className="px-6 py-2 text-white bg-blue-600 rounded hover:bg-blue-700 transition"
 //         >
 //           Login
 //         </Link>
 
 //         {/* Signup Link */}
-//         <Link 
-//           href="/signup" 
+//         <Link
+//           href="/signup"
 //           className="px-6 py-2 text-white bg-green-600 rounded hover:bg-green-700 transition"
 //         >
 //           Signup
@@ -34,9 +34,16 @@
 
 // export default Page;
 
-'use client';
+"use client";
 
-import { Sparkles, Users, PenTool, ShieldCheck, Zap, ArrowRight } from "lucide-react";
+import {
+  Sparkles,
+  Users,
+  PenTool,
+  ShieldCheck,
+  Zap,
+  ArrowRight,
+} from "lucide-react";
 import Link from "next/link";
 import { signInWithPopup } from "firebase/auth";
 import { auth, provider } from "@/lib/firebase";
@@ -55,7 +62,6 @@ export default function LandingPage() {
   };
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-950 text-white">
-
       {/* Navbar */}
       <div className="w-full flex justify-between items-center px-8 py-6 border-b border-gray-800">
         <h1 className="text-2xl font-extrabold tracking-wide text-blue-400">
@@ -63,13 +69,12 @@ export default function LandingPage() {
         </h1>
 
         <div className="flex gap-4">
-
           <button
             onClick={loginWithGoogle}
-            className="px-4 py-2 border border-gray-700 rounded-lg hover:bg-gray-800 transition">
+            className="px-4 py-2 border border-gray-700 rounded-lg hover:bg-gray-800 transition"
+          >
             Login
           </button>
-
 
           <Link href="/signup">
             <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition font-semibold">
@@ -108,7 +113,6 @@ export default function LandingPage() {
 
       {/* Features Section */}
       <div className="mt-20 px-8 max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-
         <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 hover:-translate-y-1 hover:shadow-blue-800/30 transition">
           <div className="flex items-center gap-3">
             <Users className="text-blue-400" size={32} />
@@ -125,7 +129,8 @@ export default function LandingPage() {
             <h2 className="text-xl font-bold">Powerful Drawing Tools</h2>
           </div>
           <p className="text-gray-400 mt-3">
-            Smooth strokes, shapes, writing and more. Your creativity, unleashed.
+            Smooth strokes, shapes, writing and more. Your creativity,
+            unleashed.
           </p>
         </div>
 
@@ -138,7 +143,6 @@ export default function LandingPage() {
             Your rooms are protected. Your ideas stay yours.
           </p>
         </div>
-
       </div>
 
       {/* Highlight Section */}

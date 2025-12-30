@@ -1,10 +1,12 @@
+// src/app/home/page.tsx
+
 // 'use client';
 
 // import { useState } from 'react';
 // import { useRouter } from 'next/navigation';
 // // We don't need to emit socket events here anymore, just navigation
 // // But if you use socket.id for userId generation, keep the import
-// import { socket } from '../lib/socket'; 
+// import { socket } from '../lib/socket';
 
 // export default function Home() {
 //   const [roomCode, setRoomCode] = useState('');
@@ -66,10 +68,10 @@
 //                 <label className="block text-sm font-medium text-gray-700 mb-2">
 //                   Room Code
 //                 </label>
-                
-//                 {/* FIX APPLIED BELOW: 
-//                    Changed 'sm:flex-row' to 'xl:flex-row'. 
-//                    This keeps the elements stacked vertically on Tablets/Laptops 
+
+//                 {/* FIX APPLIED BELOW:
+//                    Changed 'sm:flex-row' to 'xl:flex-row'.
+//                    This keeps the elements stacked vertically on Tablets/Laptops
 //                    where the 2-column grid makes the card too narrow for a horizontal layout.
 //                 */}
 //                 <div className="flex flex-col xl:flex-row gap-2 items-stretch">
@@ -138,13 +140,21 @@
 //   );
 // }
 
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { socket } from '../lib/socket'; 
-import { Sparkles, Copy, Check, PlusCircle, Users, KeyRound, ArrowRightCircle } from "lucide-react";
-import useUser from '@/hooks/useUser';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { socket } from "../lib/socket";
+import {
+  Sparkles,
+  Copy,
+  Check,
+  PlusCircle,
+  Users,
+  KeyRound,
+  ArrowRightCircle,
+} from "lucide-react";
+import useUser from "@/hooks/useUser";
 
 export default function Home() {
   const { user, loading } = useUser();
@@ -152,19 +162,19 @@ export default function Home() {
   useEffect(() => {
     if (user) {
       router.push("/home");
-    }
-    else{
+    } else {
       router.push("/login");
     }
   }, [user, loading]);
-  const [roomCode, setRoomCode] = useState('');
-  const [joinCode, setJoinCode] = useState('');
+  const [roomCode, setRoomCode] = useState("");
+  const [joinCode, setJoinCode] = useState("");
   const [copied, setCopied] = useState(false);
   const router = useRouter();
 
   const generateRoomCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let code = '';
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let code = "";
     for (let i = 0; i < 20; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
@@ -185,7 +195,7 @@ export default function Home() {
 
   const handleCreateRoom = () => {
     if (!roomCode) {
-      alert('Please generate a room code first');
+      alert("Please generate a room code first");
       return;
     }
     router.push(`/room/${roomCode}`);
@@ -193,7 +203,7 @@ export default function Home() {
 
   const handleJoinRoom = () => {
     if (!joinCode.trim()) {
-      alert('Please enter a room code');
+      alert("Please enter a room code");
       return;
     }
     router.push(`/room/${joinCode.trim()}`);
@@ -202,7 +212,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-950 flex items-center justify-center p-6 text-white">
       <div className="w-full max-w-6xl mx-auto">
-
         <div className="text-center mb-10 space-y-2">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-wide flex items-center justify-center gap-3">
             <Sparkles className="text-blue-400 animate-pulse" />
@@ -210,12 +219,12 @@ export default function Home() {
             <Sparkles className="text-purple-400 animate-pulse" />
           </h1>
           <p className="text-gray-400 text-sm">
-            Create or join a live collaborative whiteboard. No pressure. Just chaos.
+            Create or join a live collaborative whiteboard. No pressure. Just
+            chaos.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-
           {/* Create Room */}
           <div className="bg-gray-900/70 backdrop-blur-xl border border-gray-800 rounded-2xl shadow-xl hover:shadow-blue-800/40 hover:-translate-y-1 transition p-8">
             <div className="flex items-center justify-center gap-2 mb-6">
@@ -252,7 +261,7 @@ export default function Home() {
                   className="px-5 py-3 bg-transparent border border-red-500 text-red-400 hover:bg-red-500/10 font-semibold rounded-lg flex items-center gap-2 transition"
                 >
                   {copied ? <Check size={18} /> : <Copy size={18} />}
-                  {copied ? 'Copied' : 'Copy'}
+                  {copied ? "Copied" : "Copy"}
                 </button>
               </div>
             </div>
@@ -295,7 +304,6 @@ export default function Home() {
               Enter Room
             </button>
           </div>
-
         </div>
       </div>
     </div>
