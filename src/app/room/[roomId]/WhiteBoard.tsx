@@ -53,6 +53,31 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
 
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+
+ const summarizeBoard = async () => {
+  const canvas = canvasRef.current;
+  if (!canvas) return alert("Canvas not found. Technology hates us.");
+
+  const image = canvas.toDataURL("image/png");
+
+  setLoadingSummary(true);
+
+  const res = await fetch("/api/ai/summarizeVision", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image })
+  });
+
+  const data = await res.json();
+  setAiSummary(data.summary);
+
+  setLoadingSummary(false);
+};
+
+
+
 
   const handleSaveToDrive = async () => {
     try {
@@ -160,7 +185,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     try {
       socket.disconnect();
       await signOut(auth);
-      localStorage.removeItem("drive_token"); 
+      localStorage.removeItem("drive_token");
       router.push("/login");
     } catch (error) {
       console.error("Logout failed", error);
@@ -582,11 +607,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
   }, [boards, images]);
 
-
-  // ==========================================
-  // 5. RENDER
-  // ==========================================
-
   return (
     <div className="bg-gray-50 min-h-screen flex flex-col font-sans">
 
@@ -646,13 +666,13 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             Save to Google Drive
           </button>
 
-          {/* LOGOUT BUTTON */}
           <button
-            onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm"
+            onClick={summarizeBoard}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow"
           >
-            Logout
+            {loadingSummary ? "Summarizing..." : "AI Summarize"}
           </button>
+
 
         </div>
       </header>
@@ -823,6 +843,28 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         </aside>
 
       </div>
+
+      {aiSummary && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]">
+          <div className="bg-gray-900 text-white p-6 rounded-2xl max-w-2xl w-full border border-gray-700 shadow-2xl">
+            <h2 className="text-2xl font-bold mb-4">AI Summary</h2>
+
+            <pre className="text-gray-300 whitespace-pre-wrap max-h-[60vh] overflow-y-auto leading-relaxed">
+              {aiSummary}
+            </pre>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setAiSummary(null)}
+                className="px-5 py-2.5 bg-red-500 hover:bg-red-600 rounded-lg font-semibold transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

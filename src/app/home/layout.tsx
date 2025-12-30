@@ -29,7 +29,7 @@ export default function HomeLayout({
   return (
     <div className="relative min-h-screen">
 
-      {/* Logout Button: Positioned Top-Right */}
+      {/* Logout Button: Positioned Top-Right
       <div className="absolute top-4 right-4 z-50">
         <button
           onClick={handleLogout}
@@ -37,7 +37,7 @@ export default function HomeLayout({
         >
           Logout
         </button>
-      </div>
+      </div> */}
 
       {/* Render the Page Content */}
       {children}

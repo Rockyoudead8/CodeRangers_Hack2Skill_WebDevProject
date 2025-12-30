@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import useUser from "@/hooks/useUser";
 import { auth } from "@/lib/firebase";
 import { GithubAuthProvider } from "firebase/auth";
+import LoadingScreen from "../../../components/Loading";
 import {
   GoogleAuthProvider,
   signInWithPopup,
@@ -14,12 +16,24 @@ import {
 import toast from "react-hot-toast";
 
 export default function Login() {
-  const router = useRouter();
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [Loading, setLoading] = useState(false);
+  const { user, loading } = useUser();
+  const router = useRouter();
+
+  
+  useEffect(() => {
+    if (!loading && user) {
+      router.push("/home");
+    }
+  }, [user, loading, router]);
+
+  if (loading) return <LoadingScreen />;
+
+
 
   const githubLogin = async () => {
     try {
@@ -120,14 +134,14 @@ export default function Login() {
 
           <button
             onClick={handleAuth}
-            disabled={loading}
+            disabled={Loading}
             className="mt-2 w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-purple-600 hover:to-blue-600 transition rounded-xl text-white font-bold tracking-wide shadow-lg shadow-blue-700/40 disabled:opacity-50"
           >
-            {loading
+            {Loading
               ? "Processing..."
               : mode === "login"
-              ? "Login"
-              : "Create Account"}
+                ? "Login"
+                : "Create Account"}
           </button>
         </div>
 
