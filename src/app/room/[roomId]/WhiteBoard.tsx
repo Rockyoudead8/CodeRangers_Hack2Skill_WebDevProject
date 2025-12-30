@@ -194,8 +194,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const handleSaveToDrive = async () => {
     try {
       const token = localStorage.getItem("drive_token");
-      if (!token) return toast.error("Login again with Google");
-      if (strokes.length === 0) return toast.error("Canvas is empty!");
+      if (!token) return alert("Login again with Google");
+      if (strokes.length === 0) return alert("Canvas is empty!");
 
       // 1. Calculate Bounding Box
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -242,10 +242,10 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         body: form
       });
 
-      toast.success("Saved Snapshot to Drive 📸");
+      alert("Saved Snapshot to Drive 📸");
     } catch (e) {
       console.error(e);
-      toast.error("Drive upload failed.");
+      alert("Drive upload failed.");
     }
   };
 
@@ -851,9 +851,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           </button>
           <button onClick={handleSaveToDrive} className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm">
             Save to Google Drive
-          </button>
-          <button onClick={handleLogout} className="bg-red-500 hover:bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm">
-            Logout
           </button>
         </div>
       </header>
