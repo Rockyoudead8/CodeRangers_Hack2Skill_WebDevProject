@@ -142,6 +142,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [camera, setCamera] = useState({ x: 0, y: 0, zoom: 1 });
   const [isPanning, setIsPanning] = useState(false);
 
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
   // ==========================================
   // 3. HELPERS & RENDER ENGINE
   // ==========================================
@@ -190,6 +192,121 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   // ==========================================
   // 4. DATABASE & SAVE LOGIC
   // ==========================================
+
+  // function for doing the summary of the whole whiteboard
+  const exportFullBoardImage = () => {
+  if (strokes.length === 0) return null;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  strokes.forEach(s => {
+    s.points.forEach(p => {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    });
+  });
+
+  const PADDING = 100;
+  minX -= PADDING; 
+  minY -= PADDING;
+  maxX += PADDING; 
+  maxY += PADDING;
+
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.translate(-minX, -minY);
+  renderStrokesToContext(ctx, strokes);
+
+  return canvas.toDataURL("image/png");
+};
+
+
+const summarizeEntireBoard = async () => {
+  try {
+    const image = exportFullBoardImage();
+    if (!image) return alert("Board is empty. Draw something first genius.");
+
+    setLoadingSummary(true);
+
+    const res = await fetch("/api/ai/summarizeVisionFull", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image })
+    });
+
+    const data = await res.json();
+    setAiSummary(data.summary || "AI died trying. Probably deserved.");
+  } catch (err) {
+    console.error(err);
+    alert("AI Summarizer crashed.");
+  } finally {
+    setLoadingSummary(false);
+  }
+};
+
+
+  function getViewportImage(canvasRef: any) {
+  const canvas = canvasRef.current;
+  if (!canvas) return null;
+
+  const rect = canvas.getBoundingClientRect();
+
+  const viewWidth = window.innerWidth;
+  const viewHeight = window.innerHeight;
+
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = viewWidth;
+  tempCanvas.height = viewHeight;
+
+  const ctx = tempCanvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+  ctx.drawImage(canvas, -rect.left, -rect.top);
+
+  return tempCanvas.toDataURL("image/png");
+}
+
+
+
+const summarizeBoard = async () => {
+  try {
+    const image = getViewportImage(canvasRef);
+    if (!image) return alert("Canvas not found. Technology hates us.");
+
+    setLoadingSummary(true);
+
+    const res = await fetch("/api/ai/summarizeVision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image })
+    });
+
+    const data = await res.json();
+    setAiSummary(data.summary || "AI cried. No idea what this is.");
+  } catch (err) {
+    console.error(err);
+    alert("AI Summarizer crashed. Probably your fault.");
+  } finally {
+    setLoadingSummary(false);
+  }
+};
+
 
   const handleSaveToDrive = async () => {
     try {
@@ -852,6 +969,21 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           <button onClick={handleSaveToDrive} className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm">
             Save to Google Drive
           </button>
+
+          <button
+            onClick={summarizeBoard}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow"
+          >
+            {loadingSummary ? "Summarizing..." : "AI Summarize"}
+          </button>
+
+          <button
+  onClick={summarizeEntireBoard}
+  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow"
+>
+  {loadingSummary ? "Processing..." : "AI Full Board Summary"}
+</button>
+
         </div>
       </header>
 
@@ -1005,6 +1137,27 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             )}
           </button>
         </div>
+
+        {aiSummary && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]">
+          <div className="bg-gray-900 text-white p-6 rounded-2xl max-w-2xl w-full border border-gray-700 shadow-2xl">
+            <h2 className="text-2xl font-bold mb-4">AI Summary</h2>
+
+            <pre className="text-gray-300 whitespace-pre-wrap max-h-[60vh] overflow-y-auto leading-relaxed">
+              {aiSummary}
+            </pre>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setAiSummary(null)}
+                className="px-5 py-2.5 bg-red-500 hover:bg-red-600 rounded-lg font-semibold transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       </div>
     </div>
