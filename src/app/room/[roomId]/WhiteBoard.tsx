@@ -15,11 +15,21 @@ import Board from "./Board";
 import IBoard from "./IBoard";
 
 import { saveBoard, subscribeToBoard, getRoom } from "@/lib/roomService";
+import { renderAllStrokes } from "./hooks/renderAllStrokes";
+import {
+  resizeImage,
+  handleImageUpload,
+  determineNewPosition,
+  checkForOverlap,
+  handleDragStart,
+} from "./components/image";
 
 type Position = { x: number; y: number };
 
 import { BoardData } from "./types";
 import type { CanvasStroke, Point } from "./types/canvas";
+import { useDraw } from "./hooks/draw";
+import { useSync } from "./hooks/useSync";
 
 interface WhiteboardProps {
   roomId: string;
@@ -66,85 +76,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
-
-  // Add this function inside your WhiteBoard component
-
-  const renderAllStrokes = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw each stroke
-    canvasStrokes.forEach((stroke) => {
-      ctx.strokeStyle = stroke.color;
-      ctx.fillStyle = stroke.color;
-      ctx.lineWidth = stroke.lineWidth;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-
-      switch (stroke.tool) {
-        case "pencil": {
-          if (stroke.points.length < 2) break;
-          ctx.beginPath();
-          ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-          stroke.points.forEach((point) => {
-            ctx.lineTo(point.x, point.y);
-          });
-          ctx.stroke();
-          break;
-        }
-
-        case "line": {
-          if (stroke.points.length < 2) break;
-          const [start, end] = stroke.points;
-          ctx.beginPath();
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
-          ctx.stroke();
-          break;
-        }
-
-        case "rect": {
-          if (stroke.points.length < 2) break;
-          const [start, end] = stroke.points;
-          const width = end.x - start.x;
-          const height = end.y - start.y;
-          ctx.strokeRect(start.x, start.y, width, height);
-          break;
-        }
-
-        case "circle": {
-          if (stroke.points.length < 2) break;
-          const [center, edge] = stroke.points;
-          const radius = Math.sqrt(
-            Math.pow(edge.x - center.x, 2) + Math.pow(edge.y - center.y, 2)
-          );
-          ctx.beginPath();
-          ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
-          ctx.stroke();
-          break;
-        }
-
-        case "eraser": {
-          // Eraser just clears rectangles at each point
-          stroke.points.forEach((point) => {
-            ctx.clearRect(
-              point.x - stroke.lineWidth / 2,
-              point.y - stroke.lineWidth / 2,
-              stroke.lineWidth,
-              stroke.lineWidth
-            );
-          });
-          break;
-        }
-      }
-    });
-  };
 
   const handleSaveToDrive = async () => {
     try {
@@ -359,218 +290,16 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     };
   }, [roomId]);
 
-  useEffect(() => {
-    if (!roomId || !crdtRef.current) return;
+  useSync({
+    roomId,
+    userEmail,
+    crdtRef,
+    setCanvasStrokes,
+    setUsers,
+    setBoards,
+    setImages,
+  });
 
-    if (!socket.connected) socket.connect();
-    userIdRef.current = userEmail;
-    const userId = userIdRef.current;
-
-    console.log(`Joining room ${roomId} as ${userId}`);
-    socket.emit("userJoined", { userId, roomId });
-
-    // Canvas draw handler (unchanged)
-    // NEW: Receive single stroke from another user
-    const handleCanvasStroke = (stroke: CanvasStroke) => {
-      if (!crdtRef.current) return;
-
-      console.log("📥 Received stroke from another user:", stroke.id);
-
-      // Update vector clock
-      crdtRef.current.updateClock(stroke.vectorClock);
-
-      // Add to local strokes
-      setCanvasStrokes((prev) => {
-        // Check if we already have this stroke (shouldn't happen, but safety first)
-        if (prev.find((s) => s.id === stroke.id)) {
-          return prev;
-        }
-        return [...prev, stroke].sort((a, b) => a.timestamp - b.timestamp);
-      });
-    };
-
-    // NEW: Sync all strokes when joining room
-    const handleCanvasSync = (strokes: CanvasStroke[]) => {
-      console.log("📥 Socket sync received:", strokes.length, "strokes");
-
-      setCanvasStrokes((currentStrokes) => {
-        // Always accept socket sync if we have fewer strokes
-        if (strokes.length > currentStrokes.length) {
-          console.log(
-            `✅ Socket has MORE strokes (${strokes.length} vs ${currentStrokes.length}) - accepting socket data`
-          );
-          return strokes.sort((a, b) => a.timestamp - b.timestamp);
-        }
-
-        // If we have no strokes, accept socket sync
-        if (currentStrokes.length === 0 && strokes.length > 0) {
-          console.log("✅ Accepting socket sync (no local strokes)");
-          return strokes.sort((a, b) => a.timestamp - b.timestamp);
-        }
-
-        // Keep current if equal or we have more
-        console.log(
-          `⚠️ Keeping current strokes (${currentStrokes.length}) - socket has ${strokes.length}`
-        );
-        return currentStrokes;
-      });
-    };
-
-    // NEW: Clear canvas for everyone
-    const handleCanvasClear = () => {
-      console.log("🗑️ Canvas cleared by another user");
-      setCanvasStrokes([]);
-    };
-
-    const handleUserList = (data: any) => {
-      const userList = Array.isArray(data) ? data : data.users;
-      if (userList) setUsers(userList);
-    };
-
-    // ===== NEW: CRDT-AWARE BOARD HANDLERS =====
-
-    const handleBoardAdd = (boardData: BoardData) => {
-      if (!crdtRef.current) return;
-
-      console.log("📥 Received board:add:", {
-        id: boardData.id,
-        version: boardData.version,
-        vectorClock: boardData.vectorClock,
-      });
-
-      // Update our vector clock
-      crdtRef.current.updateClock(boardData.vectorClock);
-
-      setBoards((prev) => {
-        const exists = prev.find((b) => b.id === boardData.id);
-
-        if (exists) {
-          // Conflict: resolve using CRDT
-          console.log("⚠️ Board already exists locally, resolving conflict");
-          const resolved = crdtRef.current!.resolveConflict(exists, boardData);
-          return prev.map((b) => (b.id === boardData.id ? resolved : b));
-        }
-
-        // New board, add it
-        return [...prev, boardData];
-      });
-    };
-
-    const handleBoardUpdate = (boardData: BoardData) => {
-      if (!crdtRef.current) return;
-
-      console.log("📥 Received board:update:", {
-        id: boardData.id,
-        version: boardData.version,
-        vectorClock: boardData.vectorClock,
-      });
-
-      crdtRef.current.updateClock(boardData.vectorClock);
-
-      setBoards((prev) => {
-        const local = prev.find((b) => b.id === boardData.id);
-
-        if (!local) {
-          console.warn("⚠️ Received update for unknown board, adding it");
-          return [...prev, boardData];
-        }
-
-        // Resolve conflict
-        const resolved = crdtRef.current!.resolveConflict(local, boardData);
-
-        // Only update if resolved version is different
-        if (resolved === local) {
-          return prev; // No change needed
-        }
-
-        return prev.map((b) => (b.id === boardData.id ? resolved : b));
-      });
-    };
-
-    const handleBoardDelete = (boardId: string | number) => {
-      console.log("📥 Received board:delete:", boardId);
-      setBoards((prev) => prev.filter((b) => b.id !== boardId));
-    };
-
-    // ===== NEW: CRDT-AWARE IMAGE HANDLERS =====
-
-    const handleImageAdd = (imageData: BoardData) => {
-      if (!crdtRef.current) return;
-
-      console.log("📥 Received image:add:", {
-        id: imageData.id,
-        version: imageData.version,
-      });
-
-      crdtRef.current.updateClock(imageData.vectorClock);
-
-      setImages((prev) => {
-        const exists = prev.find((i) => i.id === imageData.id);
-
-        if (exists) {
-          const resolved = crdtRef.current!.resolveConflict(exists, imageData);
-          return prev.map((i) => (i.id === imageData.id ? resolved : i));
-        }
-
-        return [...prev, imageData];
-      });
-    };
-
-    const handleImageUpdate = (imageData: BoardData) => {
-      if (!crdtRef.current) return;
-
-      console.log("📥 Received image:update:", {
-        id: imageData.id,
-        version: imageData.version,
-      });
-
-      crdtRef.current.updateClock(imageData.vectorClock);
-
-      setImages((prev) => {
-        const local = prev.find((i) => i.id === imageData.id);
-
-        if (!local) {
-          return [...prev, imageData];
-        }
-
-        const resolved = crdtRef.current!.resolveConflict(local, imageData);
-        return prev.map((i) => (i.id === imageData.id ? resolved : i));
-      });
-    };
-
-    const handleImageDelete = (imageId: string | number) => {
-      console.log("📥 Received image:delete:", imageId);
-      setImages((prev) => prev.filter((i) => i.id !== imageId));
-    };
-
-    // Register all listeners
-    socket.on("canvas:stroke", handleCanvasStroke);
-    socket.on("canvas:sync", handleCanvasSync);
-    socket.on("canvas:clear", handleCanvasClear);
-    socket.on("userIsJoined", handleUserList);
-    socket.on("allUsers", handleUserList);
-    socket.on("board:add", handleBoardAdd);
-    socket.on("board:update", handleBoardUpdate);
-    socket.on("board:delete", handleBoardDelete);
-    socket.on("image:add", handleImageAdd);
-    socket.on("image:update", handleImageUpdate);
-    socket.on("image:delete", handleImageDelete);
-
-    return () => {
-      socket.off("canvas:stroke", handleCanvasStroke);
-      socket.off("canvas:sync", handleCanvasSync);
-      socket.off("canvas:clear", handleCanvasClear);
-      socket.off("userIsJoined", handleUserList);
-      socket.off("allUsers", handleUserList);
-      socket.off("board:add", handleBoardAdd);
-      socket.off("board:update", handleBoardUpdate);
-      socket.off("board:delete", handleBoardDelete);
-      socket.off("image:add", handleImageAdd);
-      socket.off("image:update", handleImageUpdate);
-      socket.off("image:delete", handleImageDelete);
-      socket.disconnect();
-    };
-  }, [roomId, userEmail]);
   // Auto-save boards and images when they change (from remote updates)
   useEffect(() => {
     if (isLoadingFromFirestore.current) return;
@@ -628,193 +357,52 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     socket.emit("canvas:clear", { roomId });
     saveThrottled();
   };
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let tempStrokePoints: Point[] = []; // Temporarily store points while drawing
-
-    const handleMouseDown = (e: MouseEvent) => {
-      setIsDrawing(true);
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      // Start new stroke
-      tempStrokePoints = [{ x, y }];
-
-      setStartX(x);
-      setStartY(y);
-      setImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
-
-      if (selectedTool === "pencil") {
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-      }
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDrawing) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      // Add point to current stroke
-      tempStrokePoints.push({ x, y });
-
-      // For shapes, restore canvas to show preview
-      if (["line", "rect", "circle"].includes(selectedTool) && imageData) {
-        ctx.putImageData(imageData, 0, 0);
-      }
-
-      ctx.strokeStyle = selectedColor;
-      ctx.fillStyle = selectedColor;
-      ctx.lineWidth = brushSize;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-
-      switch (selectedTool) {
-        case "pencil":
-          ctx.lineTo(x, y);
-          ctx.stroke();
-          break;
-        case "line":
-          ctx.beginPath();
-          ctx.moveTo(startX, startY);
-          ctx.lineTo(x, y);
-          ctx.stroke();
-          break;
-        case "rect": {
-          const width = x - startX;
-          const height = y - startY;
-          ctx.strokeRect(startX, startY, width, height);
-          break;
-        }
-        case "circle": {
-          const radius = Math.sqrt(
-            Math.pow(x - startX, 2) + Math.pow(y - startY, 2)
-          );
-          ctx.beginPath();
-          ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
-          ctx.stroke();
-          break;
-        }
-        case "eraser":
-          ctx.clearRect(
-            x - brushSize / 2,
-            y - brushSize / 2,
-            brushSize,
-            brushSize
-          );
-          break;
-      }
-    };
-
-    const handleMouseUp = () => {
-      if (!isDrawing) return;
-      setIsDrawing(false);
-
-      if (!crdtRef.current) return;
-
-      // Create stroke object
-      let strokePoints = tempStrokePoints;
-
-      // For shapes, only need start/end points
-      if (["line", "rect", "circle"].includes(selectedTool)) {
-        strokePoints = [
-          { x: startX, y: startY },
-          strokePoints[strokePoints.length - 1],
-        ];
-      }
-
-      // Create CRDT stroke
-      const newStroke = crdtRef.current.createStroke({
-        tool: selectedTool as any,
-        points: strokePoints,
-        color: selectedColor,
-        lineWidth: brushSize,
-      });
-
-      // Add to local state
-      setCanvasStrokes((prev) => [...prev, newStroke]);
-
-      // Emit to others
-      socket.emit("canvas:stroke", { roomId, stroke: newStroke });
-
-      // Save to Firestore (throttled)
-      saveThrottled();
-
-      // Reset
-      tempStrokePoints = [];
-      ctx.beginPath();
-    };
-
-    const handleMouseLeave = handleMouseUp;
-
-    canvas.addEventListener("mousedown", handleMouseDown);
-    canvas.addEventListener("mousemove", handleMouseMove);
-    canvas.addEventListener("mouseup", handleMouseUp);
-    canvas.addEventListener("mouseleave", handleMouseLeave);
-
-    return () => {
-      canvas.removeEventListener("mousedown", handleMouseDown);
-      canvas.removeEventListener("mousemove", handleMouseMove);
-      canvas.removeEventListener("mouseup", handleMouseUp);
-      canvas.removeEventListener("mouseleave", handleMouseLeave);
-    };
-  }, [
-    isDrawing,
+  // Use the useDraw hook
+  useDraw({
+    canvasRef,
     selectedTool,
     selectedColor,
     brushSize,
-    startX,
-    startY,
-    imageData,
+    crdtRef,
+    setCanvasStrokes,
     roomId,
-  ]);
+    saveThrottled,
+  });
 
   // Add this near your other useEffects
 
   useEffect(() => {
-    renderAllStrokes();
+    renderAllStrokes({
+      canvasRef,
+      canvasStrokes,
+    });
   }, [canvasStrokes]); // Re-render whenever strokes change
 
   // ==========================================
   // 4. BOARD & IMAGE MANAGEMENT LOGIC
   // ==========================================
 
-  const determineNewPosition = () => {
-    if (typeof window === "undefined") return { x: 100, y: 100 };
-    return {
-      x: Math.floor(Math.random() * (window.innerWidth / 2)),
-      y: Math.floor(Math.random() * (window.innerHeight / 2)),
-    };
-  };
+  // const checkForOverlap = (id: number | string) => {
+  //   const currentNoteRef = itemRefs.current[id]?.current;
+  //   if (!currentNoteRef) return false;
+  //   const currentRect = currentNoteRef.getBoundingClientRect();
 
-  const checkForOverlap = (id: number | string) => {
-    const currentNoteRef = itemRefs.current[id]?.current;
-    if (!currentNoteRef) return false;
-    const currentRect = currentNoteRef.getBoundingClientRect();
+  //   const allItems = [...boards, ...images];
 
-    const allItems = [...boards, ...images];
+  //   return allItems.some((item) => {
+  //     if (item.id === id) return false;
+  //     const otherNoteRef = itemRefs.current[item.id]?.current;
+  //     if (!otherNoteRef) return false;
+  //     const otherRect = otherNoteRef.getBoundingClientRect();
 
-    return allItems.some((item) => {
-      if (item.id === id) return false;
-      const otherNoteRef = itemRefs.current[item.id]?.current;
-      if (!otherNoteRef) return false;
-      const otherRect = otherNoteRef.getBoundingClientRect();
-
-      return !(
-        currentRect.right < otherRect.left ||
-        currentRect.left > otherRect.right ||
-        currentRect.bottom < otherRect.top ||
-        currentRect.top > otherRect.bottom
-      );
-    });
-  };
+  //     return !(
+  //       currentRect.right < otherRect.left ||
+  //       currentRect.left > otherRect.right ||
+  //       currentRect.bottom < otherRect.top ||
+  //       currentRect.top > otherRect.bottom
+  //     );
+  //   });
+  // };
 
   // Around line 800 - REPLACE handleAddBoard
   const handleAddBoard = () => {
@@ -852,138 +440,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     setNewBoardTitle("");
     setIsModalOpen(false);
   };
-
-  const resizeImage = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          let width = img.width;
-          let height = img.height;
-          const MAX_DIM = 800;
-
-          if (width > height) {
-            if (width > MAX_DIM) {
-              height *= MAX_DIM / width;
-              width = MAX_DIM;
-            }
-          } else {
-            if (height > MAX_DIM) {
-              width *= MAX_DIM / height;
-              height = MAX_DIM;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", 0.8));
-        };
-        img.src = e.target?.result as string;
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // Around line 870 - REPLACE handleImageUpload
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !crdtRef.current) return;
-
-    try {
-      const base64Image = await resizeImage(file);
-
-      const baseImage = {
-        id: Date.now(),
-        type: "image" as const,
-        name: file.name,
-        position: determineNewPosition(),
-        content: base64Image,
-      };
-
-      const newImage = crdtRef.current.createOperation(baseImage);
-
-      console.log("🖼️ Adding image with CRDT metadata:", {
-        id: newImage.id,
-        version: newImage.version,
-      });
-
-      setImages((prev) => {
-        const updatedImages = [...prev, newImage];
-        // 🔥 Save with NEW state
-        saveThrottled(canvasStrokes, boards, updatedImages);
-        return updatedImages;
-      });
-
-      socket.emit("image:add", { roomId, imageData: newImage });
-    } catch (err) {
-      console.error("Image processing failed", err);
-      alert("Could not process image.");
-    }
-
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  // Around line 900 - REPLACE updateItemPosition
-  const updateItemPosition = (
-    id: number | string,
-    newPosition: Position,
-    type: "text" | "image"
-  ) => {
-    if (!crdtRef.current) {
-      console.error("❌ CRDT Manager not initialized");
-      return;
-    }
-
-    if (type === "text") {
-      const board = boards.find((b) => b.id === id);
-      if (board) {
-        const updated = crdtRef.current.createOperation({
-          ...board,
-          position: newPosition,
-        });
-
-        console.log("🔄 Updating board position with CRDT:", {
-          id: updated.id,
-          version: updated.version,
-        });
-
-        setBoards((prev) => {
-          const updatedBoards = prev.map((b) => (b.id === id ? updated : b));
-          // 🔥 Save with NEW state
-          saveThrottled(canvasStrokes, updatedBoards, images);
-          return updatedBoards;
-        });
-
-        socket.emit("board:update", { roomId, boardData: updated });
-      }
-    } else {
-      const img = images.find((i) => i.id === id);
-      if (img) {
-        const updated = crdtRef.current.createOperation({
-          ...img,
-          position: newPosition,
-        });
-
-        console.log("🔄 Updating image position with CRDT:", {
-          id: updated.id,
-          version: updated.version,
-        });
-
-        setImages((prev) => {
-          const updatedImages = prev.map((i) => (i.id === id ? updated : i));
-          // 🔥 Save with NEW state
-          saveThrottled(canvasStrokes, boards, updatedImages);
-          return updatedImages;
-        });
-
-        socket.emit("image:update", { roomId, imageData: updated });
-      }
-    }
-  };
-
+  // Around line 850 - REPLACE updateItemName
   const updateItemName = (
     id: number | string,
     newName: string,
@@ -1098,49 +555,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     }
   };
 
-  const handleDragStart = (item: BoardData, e: React.MouseEvent) => {
-    e.preventDefault();
-    const { id } = item;
-    const itemRef = itemRefs.current[id]?.current;
-    const container = containerRef.current;
-    if (!itemRef || !container) return;
-
-    const itemRect = itemRef.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const offsetX = e.clientX - itemRect.left;
-    const offsetY = e.clientY - itemRect.top;
-    const startPos = item.position;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const newX = e.clientX - offsetX - containerRect.left;
-      let newY = e.clientY - offsetY - containerRect.top;
-      if (newY < 0) newY = 0;
-
-      itemRef.style.left = `${newX}px`;
-      itemRef.style.top = `${newY}px`;
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-
-      const finalRect = itemRef.getBoundingClientRect();
-      const newPosition = {
-        x: finalRect.left - containerRect.left,
-        y: finalRect.top - containerRect.top,
-      };
-
-      if (checkForOverlap(id)) {
-        itemRef.style.left = `${startPos.x}px`;
-        itemRef.style.top = `${startPos.y}px`;
-      } else {
-        updateItemPosition(id, newPosition, item.type);
-      }
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  };
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1183,7 +597,20 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleImageUpload}
+        onChange={(e) =>
+          handleImageUpload(
+            e,
+            crdtRef,
+            setImages,
+            roomId,
+            canvasStrokes,
+            boards,
+            isLoadingFromFirestore,
+            saveTimeout,
+            lastSave,
+            fileInputRef
+          )
+        }
         accept="image/*"
         className="hidden"
       />
@@ -1325,7 +752,24 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                 onContentChange={(newContent) =>
                   updateBoardContent(board.id, newContent)
                 }
-                onMouseDown={(e) => handleDragStart(board, e)}
+                onMouseDown={(e) =>
+                  handleDragStart(
+                    board,
+                    e,
+                    itemRefs,
+                    containerRef,
+                    boards,
+                    images,
+                    crdtRef,
+                    setBoards,
+                    setImages,
+                    roomId,
+                    canvasStrokes,
+                    isLoadingFromFirestore,
+                    saveTimeout,
+                    lastSave
+                  )
+                }
                 onRename={(newName) =>
                   updateItemName(board.id, newName, "text")
                 }
@@ -1347,7 +791,24 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                 name={img.name}
                 initialPos={img.position}
                 content={img.content}
-                onMouseDown={(e) => handleDragStart(img, e)}
+                onMouseDown={(e) =>
+                  handleDragStart(
+                    img,
+                    e,
+                    itemRefs,
+                    containerRef,
+                    boards,
+                    images,
+                    crdtRef,
+                    setBoards,
+                    setImages,
+                    roomId,
+                    canvasStrokes,
+                    isLoadingFromFirestore,
+                    saveTimeout,
+                    lastSave
+                  )
+                }
                 onRename={(newName) => updateItemName(img.id, newName, "image")}
                 onDelete={() => emitDeleteItem(img.id, "image")}
               />
