@@ -262,17 +262,28 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   let lastSave = 0;
   let saveTimeout: NodeJS.Timeout | null = null;
 
-  function saveThrottled() {
+  // Around line 250 - REPLACE the entire saveThrottled function
+  function saveThrottled(
+    currentCanvasStrokes?: CanvasStroke[],
+    currentBoards?: BoardData[],
+    currentImages?: BoardData[]
+  ) {
     if (isLoadingFromFirestore.current) {
       console.log("🚫 Skipping save (loading from Firestore)");
       return;
     }
 
-    // 🔥 ADD THIS LINE
+    // Use provided state or fall back to ref values
+    const dataToSave = {
+      canvas: currentCanvasStrokes || canvasStrokes,
+      boards: currentBoards || boards,
+      images: currentImages || images,
+    };
+
     console.log("💾 About to save:", {
-      canvasStrokes: canvasStrokes.length,
-      boards: boards.length,
-      images: images.length,
+      canvasStrokes: dataToSave.canvas.length,
+      boards: dataToSave.boards.length,
+      images: dataToSave.images.length,
     });
 
     // Clear any pending save
@@ -280,17 +291,17 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       clearTimeout(saveTimeout);
     }
 
-    // Schedule save for 2 seconds from now
+    // Schedule save for 500ms (reduced from 2000ms for better responsiveness)
     saveTimeout = setTimeout(() => {
       const now = Date.now();
-      if (now - lastSave > 2000) {
+      if (now - lastSave > 500) {
         lastSave = now;
         console.log("💾 Saving board to Firestore...");
-        saveBoard(roomId, exportBoardData()).catch((err) => {
+        saveBoard(roomId, dataToSave).catch((err) => {
           console.error("❌ Firestore save failed:", err);
         });
       }
-    }, 2000); // Increased from 1500ms to 2000ms
+    }, 2000);
   }
 
   // ==========================================
@@ -315,7 +326,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   useEffect(() => {
     if (!roomId) return;
 
-    // 🔥 Load ONCE on mount, don't subscribe
+    // Load initial data
     const loadInitialData = async () => {
       try {
         const roomData = await getRoom(roomId);
@@ -331,7 +342,21 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
     loadInitialData();
 
-    // NO subscription - Socket.io handles all real-time updates
+    // Subscribe to Firestore for cross-tab/cross-device sync
+    const unsubscribe = subscribeToBoard(roomId, (data) => {
+      if (!data) return;
+
+      console.log("📥 Firestore update received");
+
+      // Only load if not currently saving
+      if (!isLoadingFromFirestore.current) {
+        loadBoardFromData(data);
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [roomId]);
 
   useEffect(() => {
@@ -369,13 +394,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       console.log("📥 Socket sync received:", strokes.length, "strokes");
 
       setCanvasStrokes((currentStrokes) => {
-        // If we have no strokes, accept socket sync
-        if (currentStrokes.length === 0) {
-          console.log("✅ Accepting socket sync (no local strokes)");
-          return strokes.sort((a, b) => a.timestamp - b.timestamp);
-        }
-
-        // 🔥 CRITICAL FIX: Compare which dataset is MORE COMPLETE
+        // Always accept socket sync if we have fewer strokes
         if (strokes.length > currentStrokes.length) {
           console.log(
             `✅ Socket has MORE strokes (${strokes.length} vs ${currentStrokes.length}) - accepting socket data`
@@ -383,7 +402,13 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           return strokes.sort((a, b) => a.timestamp - b.timestamp);
         }
 
-        // If socket has same or fewer strokes, keep current
+        // If we have no strokes, accept socket sync
+        if (currentStrokes.length === 0 && strokes.length > 0) {
+          console.log("✅ Accepting socket sync (no local strokes)");
+          return strokes.sort((a, b) => a.timestamp - b.timestamp);
+        }
+
+        // Keep current if equal or we have more
         console.log(
           `⚠️ Keeping current strokes (${currentStrokes.length}) - socket has ${strokes.length}`
         );
@@ -452,6 +477,12 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
         // Resolve conflict
         const resolved = crdtRef.current!.resolveConflict(local, boardData);
+
+        // Only update if resolved version is different
+        if (resolved === local) {
+          return prev; // No change needed
+        }
+
         return prev.map((b) => (b.id === boardData.id ? resolved : b));
       });
     };
@@ -540,6 +571,28 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       socket.disconnect();
     };
   }, [roomId, userEmail]);
+  // Auto-save boards and images when they change (from remote updates)
+  useEffect(() => {
+    if (isLoadingFromFirestore.current) return;
+
+    // Skip if no data
+    if (boards.length === 0 && images.length === 0) return;
+
+    // Debounce to avoid too many saves
+    const timer = setTimeout(() => {
+      console.log("💾 Auto-saving boards/images after remote update");
+      const dataToSave = {
+        canvas: canvasStrokes,
+        boards: boards,
+        images: images,
+      };
+      saveBoard(roomId, dataToSave).catch((err) => {
+        console.error("❌ Auto-save failed:", err);
+      });
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [boards, images, canvasStrokes, roomId]); // Include all dependencies
 
   // ==========================================
   // CANVAS DRAWING  ⭐ SAVE TO FIRESTORE WHEN DONE
@@ -763,6 +816,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     });
   };
 
+  // Around line 800 - REPLACE handleAddBoard
   const handleAddBoard = () => {
     if (!newBoardTitle.trim()) return;
     if (!crdtRef.current) {
@@ -778,7 +832,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       content: "<p>Hello World! 🌎</p>",
     };
 
-    // Add CRDT metadata
     const newBoard = crdtRef.current.createOperation(baseBoard);
 
     console.log("➕ Adding board with CRDT metadata:", {
@@ -787,11 +840,14 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       vectorClock: newBoard.vectorClock,
     });
 
-    setBoards((prev) => [...prev, newBoard]);
-    socket.emit("board:add", { roomId, boardData: newBoard });
+    setBoards((prev) => {
+      const updatedBoards = [...prev, newBoard];
+      // 🔥 CRITICAL: Save with NEW state inside setState callback
+      saveThrottled(canvasStrokes, updatedBoards, images);
+      return updatedBoards;
+    });
 
-    // Persist to Firestore
-    saveThrottled();
+    socket.emit("board:add", { roomId, boardData: newBoard });
 
     setNewBoardTitle("");
     setIsModalOpen(false);
@@ -831,6 +887,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     });
   };
 
+  // Around line 870 - REPLACE handleImageUpload
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !crdtRef.current) return;
@@ -846,7 +903,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         content: base64Image,
       };
 
-      // Add CRDT metadata
       const newImage = crdtRef.current.createOperation(baseImage);
 
       console.log("🖼️ Adding image with CRDT metadata:", {
@@ -854,9 +910,14 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         version: newImage.version,
       });
 
-      setImages((prev) => [...prev, newImage]);
+      setImages((prev) => {
+        const updatedImages = [...prev, newImage];
+        // 🔥 Save with NEW state
+        saveThrottled(canvasStrokes, boards, updatedImages);
+        return updatedImages;
+      });
+
       socket.emit("image:add", { roomId, imageData: newImage });
-      saveThrottled();
     } catch (err) {
       console.error("Image processing failed", err);
       alert("Could not process image.");
@@ -865,6 +926,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // Around line 900 - REPLACE updateItemPosition
   const updateItemPosition = (
     id: number | string,
     newPosition: Position,
@@ -888,9 +950,14 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           version: updated.version,
         });
 
-        setBoards((prev) => prev.map((b) => (b.id === id ? updated : b)));
+        setBoards((prev) => {
+          const updatedBoards = prev.map((b) => (b.id === id ? updated : b));
+          // 🔥 Save with NEW state
+          saveThrottled(canvasStrokes, updatedBoards, images);
+          return updatedBoards;
+        });
+
         socket.emit("board:update", { roomId, boardData: updated });
-        saveThrottled();
       }
     } else {
       const img = images.find((i) => i.id === id);
@@ -905,9 +972,14 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           version: updated.version,
         });
 
-        setImages((prev) => prev.map((i) => (i.id === id ? updated : i)));
+        setImages((prev) => {
+          const updatedImages = prev.map((i) => (i.id === id ? updated : i));
+          // 🔥 Save with NEW state
+          saveThrottled(canvasStrokes, boards, updatedImages);
+          return updatedImages;
+        });
+
         socket.emit("image:update", { roomId, imageData: updated });
-        saveThrottled();
       }
     }
   };
@@ -978,6 +1050,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     }
   };
 
+  // Around line 1050 - REPLACE updateBoardContent
   const updateBoardContent = (id: number | string, newContent: string) => {
     if (!crdtRef.current) return;
 
@@ -994,18 +1067,34 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       version: updatedBoard.version,
     });
 
-    setBoards((prev) => prev.map((b) => (b.id === id ? updatedBoard : b)));
+    setBoards((prev) => {
+      const updatedBoards = prev.map((b) => (b.id === id ? updatedBoard : b));
+      // 🔥 Save with NEW state
+      saveThrottled(canvasStrokes, updatedBoards, images);
+      return updatedBoards;
+    });
+
     socket.emit("board:update", { roomId, boardData: updatedBoard });
-    saveThrottled();
   };
 
+  // Around line 1100 - REPLACE emitDeleteItem
   const emitDeleteItem = (id: number | string, type: "text" | "image") => {
     if (type === "text") {
       socket.emit("board:delete", { roomId, boardId: id });
-      setBoards((prev) => prev.filter((b) => b.id !== id));
+      setBoards((prev) => {
+        const updatedBoards = prev.filter((b) => b.id !== id);
+        // 🔥 Save with NEW state
+        saveThrottled(canvasStrokes, updatedBoards, images);
+        return updatedBoards;
+      });
     } else {
       socket.emit("image:delete", { roomId, imageId: id });
-      setImages((prev) => prev.filter((img) => img.id !== id));
+      setImages((prev) => {
+        const updatedImages = prev.filter((img) => img.id !== id);
+        // 🔥 Save with NEW state
+        saveThrottled(canvasStrokes, boards, updatedImages);
+        return updatedImages;
+      });
     }
   };
 
