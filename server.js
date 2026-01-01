@@ -19,13 +19,9 @@ app.prepare().then(() => {
     cors: { origin: "*" },
   });
 
-  // 1. Canvas History
-  const roomHistory = {};
-
-  // 2. Boards History (Text/Sticky Notes)
+  // Storage - SIMPLIFIED
+  const roomHistory = {}; // { roomId: { strokes: [] } }
   const boardHistory = {};
-
-  // 3. NEW: Images History (Separate Storage)
   const imageHistory = {};
 
   io.on("connection", (socket) => {
@@ -38,68 +34,71 @@ app.prepare().then(() => {
 
       const roomUsers = getUsers(roomId);
 
-      // INITIALIZE STATES
-      if (!roomHistory[roomId]) roomHistory[roomId] = { history: [], step: -1 };
+      // 🔥 INITIALIZE - SIMPLIFIED
+      if (!roomHistory[roomId]) roomHistory[roomId] = { strokes: [] };
       if (!boardHistory[roomId]) boardHistory[roomId] = [];
-
-      // Initialize Image Array
       if (!imageHistory[roomId]) imageHistory[roomId] = [];
 
       socket.emit("userIsJoined", { success: true, users: roomUsers });
       socket.broadcast.to(roomId).emit("allUsers", roomUsers);
 
-      //  SYNC CANVAS
-      const room = roomHistory[roomId];
-      let currentImage = null;
-      if (room.step >= 0 && room.history[room.step]) {
-        currentImage = room.history[room.step];
-      }
-      socket.emit("draw", { roomId, image: currentImage });
-
-      //SYNC BOARDS
+      // 🔥 SYNC EVERYTHING
       socket.emit("boards:sync", boardHistory[roomId]);
-
-      //  NEW: SYNC IMAGES
       socket.emit("images:sync", imageHistory[roomId]);
+      socket.emit("canvas:sync", roomHistory[roomId].strokes);
 
-      console.log("userJoined", userId, roomId);
+      console.log(
+        "userJoined",
+        userId,
+        roomId,
+        "Strokes:",
+        roomHistory[roomId].strokes.length
+      );
     });
 
-    // CANVAS EVENTS
-    socket.on("draw", ({ roomId, image }) => {
+    // 🔥 CANVAS STROKE - FIXED
+    socket.on("canvas:stroke", ({ roomId, stroke }) => {
+      if (!roomHistory[roomId]) roomHistory[roomId] = { strokes: [] };
+
+      roomHistory[roomId].strokes.push(stroke);
+      console.log(
+        "📝 Stroke added. Room now has",
+        roomHistory[roomId].strokes.length,
+        "strokes"
+      );
+
+      // Broadcast to others
+      socket.broadcast.to(roomId).emit("canvas:stroke", stroke);
+    });
+
+    // 🔥 CANVAS CLEAR - FIXED
+    socket.on("canvas:clear", ({ roomId }) => {
+      if (!roomHistory[roomId]) roomHistory[roomId] = { strokes: [] };
+
+      roomHistory[roomId].strokes = [];
+      console.log("🗑️ Canvas cleared for room", roomId);
+
+      io.to(roomId).emit("canvas:clear");
+    });
+
+    // 🔥 CANVAS UNDO - FIXED
+    socket.on("canvas:undo", ({ roomId, strokeId }) => {
       if (!roomHistory[roomId]) return;
-      const room = roomHistory[roomId];
-      const newStep = room.step + 1;
-      room.history = room.history.slice(0, newStep);
-      room.history.push(image);
-      room.step = newStep;
-      io.to(roomId).emit("draw", { roomId, image });
+
+      roomHistory[roomId].strokes = roomHistory[roomId].strokes.filter(
+        (s) => s.id !== strokeId
+      );
+
+      console.log(
+        "↩️ Undo stroke. Room now has",
+        roomHistory[roomId].strokes.length,
+        "strokes"
+      );
+
+      io.to(roomId).emit("canvas:undo", strokeId);
     });
 
-    socket.on("undo", ({ roomId }) => {
-      if (!roomHistory[roomId]) return;
-      const room = roomHistory[roomId];
-      if (room.step > 0) {
-        room.step -= 1;
-        const prevImage = room.history[room.step];
-        io.to(roomId).emit("draw", { roomId, image: prevImage });
-      } else if (room.step === 0) {
-        room.step = -1;
-        io.to(roomId).emit("draw", { roomId, image: null });
-      }
-    });
-
-    socket.on("redo", ({ roomId }) => {
-      if (!roomHistory[roomId]) return;
-      const room = roomHistory[roomId];
-      if (room.step < room.history.length - 1) {
-        room.step += 1;
-        const nextImage = room.history[room.step];
-        io.to(roomId).emit("draw", { roomId, image: nextImage });
-      }
-    });
-
-    //BOARD MANAGEMENT EVENTS
+    // BOARD EVENTS
     socket.on("board:add", ({ roomId, boardData }) => {
       if (!boardHistory[roomId]) boardHistory[roomId] = [];
       boardHistory[roomId].push(boardData);
@@ -125,16 +124,13 @@ app.prepare().then(() => {
       io.to(roomId).emit("board:delete", boardId);
     });
 
-    //  NEW: IMAGE MANAGEMENT EVENTS (Separate)
-
-    // 1. Add Image
+    // IMAGE EVENTS
     socket.on("image:add", ({ roomId, imageData }) => {
       if (!imageHistory[roomId]) imageHistory[roomId] = [];
       imageHistory[roomId].push(imageData);
       io.to(roomId).emit("image:add", imageData);
     });
 
-    // 2. Update Image
     socket.on("image:update", ({ roomId, imageData }) => {
       if (!imageHistory[roomId]) return;
       const index = imageHistory[roomId].findIndex(
@@ -146,7 +142,6 @@ app.prepare().then(() => {
       }
     });
 
-    // 3. Delete Image
     socket.on("image:delete", ({ roomId, imageId }) => {
       if (!imageHistory[roomId]) return;
       imageHistory[roomId] = imageHistory[roomId].filter(

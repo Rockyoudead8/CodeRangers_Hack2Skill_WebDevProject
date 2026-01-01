@@ -14,11 +14,12 @@ import { socket } from "../../lib/socket";
 import Board from "./Board";
 import IBoard from "./IBoard";
 
-import { saveBoard, subscribeToBoard } from "@/lib/roomService";
+import { saveBoard, subscribeToBoard, getRoom } from "@/lib/roomService";
 
 type Position = { x: number; y: number };
 
 import { BoardData } from "./types";
+import type { CanvasStroke, Point } from "./types/canvas";
 
 interface WhiteboardProps {
   roomId: string;
@@ -50,7 +51,10 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [selectedTool, setSelectedTool] = useState("pencil");
   const [selectedColor, setSelectedColor] = useState("#000000");
   const [brushSize, setBrushSize] = useState(2);
+  // const [isDrawing, setIsDrawing] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [currentStroke, setCurrentStroke] = useState<Point[]>([]); // Points being drawn right now
+  const [canvasStrokes, setCanvasStrokes] = useState<CanvasStroke[]>([]); // All finished strokes
   const [startX, setStartX] = useState(0);
   const [startY, setStartY] = useState(0);
   const [imageData, setImageData] = useState<ImageData | null>(null);
@@ -62,6 +66,85 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
+
+  // Add this function inside your WhiteBoard component
+
+  const renderAllStrokes = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw each stroke
+    canvasStrokes.forEach((stroke) => {
+      ctx.strokeStyle = stroke.color;
+      ctx.fillStyle = stroke.color;
+      ctx.lineWidth = stroke.lineWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      switch (stroke.tool) {
+        case "pencil": {
+          if (stroke.points.length < 2) break;
+          ctx.beginPath();
+          ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+          stroke.points.forEach((point) => {
+            ctx.lineTo(point.x, point.y);
+          });
+          ctx.stroke();
+          break;
+        }
+
+        case "line": {
+          if (stroke.points.length < 2) break;
+          const [start, end] = stroke.points;
+          ctx.beginPath();
+          ctx.moveTo(start.x, start.y);
+          ctx.lineTo(end.x, end.y);
+          ctx.stroke();
+          break;
+        }
+
+        case "rect": {
+          if (stroke.points.length < 2) break;
+          const [start, end] = stroke.points;
+          const width = end.x - start.x;
+          const height = end.y - start.y;
+          ctx.strokeRect(start.x, start.y, width, height);
+          break;
+        }
+
+        case "circle": {
+          if (stroke.points.length < 2) break;
+          const [center, edge] = stroke.points;
+          const radius = Math.sqrt(
+            Math.pow(edge.x - center.x, 2) + Math.pow(edge.y - center.y, 2)
+          );
+          ctx.beginPath();
+          ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+          ctx.stroke();
+          break;
+        }
+
+        case "eraser": {
+          // Eraser just clears rectangles at each point
+          stroke.points.forEach((point) => {
+            ctx.clearRect(
+              point.x - stroke.lineWidth / 2,
+              point.y - stroke.lineWidth / 2,
+              stroke.lineWidth,
+              stroke.lineWidth
+            );
+          });
+          break;
+        }
+      }
+    });
+  };
 
   const handleSaveToDrive = async () => {
     try {
@@ -114,53 +197,63 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   // ==========================================
 
   function exportBoardData() {
-    const canvas = canvasRef.current;
-    let image = null;
-
-    if (canvas) {
-      image = canvas.toDataURL("image/png");
-    }
-
     return {
-      canvas: image,
+      canvas: canvasStrokes, // Save strokes array, not base64 image
       boards,
       images,
     };
   }
 
   function loadBoardFromData(data: any) {
-    if (!data) return;
-    if (!crdtRef.current) return;
+    if (!data) {
+      console.log("⚠️ No Firestore data - keeping current state");
+      return;
+    }
 
-    isLoadingFromFirestore.current = true; // 🔥 NEW
+    isLoadingFromFirestore.current = true;
 
-    console.log("📥 Restoring board from Firestore", data);
+    console.log("📥 Restoring board from Firestore", {
+      hasCanvas: !!data.canvas,
+      canvasLength: Array.isArray(data.canvas) ? data.canvas.length : 0,
+      hasBoards: !!data.boards,
+      boardsLength: data.boards?.length || 0,
+      hasImages: !!data.images,
+      imagesLength: data.images?.length || 0,
+    });
 
-    // Restore Canvas
-    if (data.canvas) {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (canvas && ctx) {
-        const img = new Image();
-        img.src = data.canvas;
-        img.onload = () => {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-        };
-      }
+    // 🔥 CRITICAL FIX: Only load if Firestore has data
+    if (data.canvas && Array.isArray(data.canvas) && data.canvas.length > 0) {
+      console.log("✅ Restoring", data.canvas.length, "strokes from Firestore");
+
+      // 🔥 Use callback to compare with current state
+      setCanvasStrokes((currentStrokes) => {
+        // If current is empty, load from Firestore
+        if (currentStrokes.length === 0) {
+          return data.canvas;
+        }
+
+        // If Firestore has MORE strokes, use it
+        if (data.canvas.length > currentStrokes.length) {
+          console.log("✅ Firestore has more data, using it");
+          return data.canvas;
+        }
+
+        // Otherwise keep current
+        console.log("⚠️ Keeping current strokes");
+        return currentStrokes;
+      });
+    } else {
+      console.log("⚠️ Firestore has no canvas data - keeping current strokes");
     }
 
     if (data.boards && data.boards.length > 0) {
-      console.log("📥 Loading boards from Firestore");
       setBoards(data.boards);
     }
 
     if (data.images && data.images.length > 0) {
-      console.log("📥 Loading images from Firestore");
       setImages(data.images);
     }
 
-    // Allow saves again after 1 second
     setTimeout(() => {
       isLoadingFromFirestore.current = false;
     }, 1000);
@@ -174,6 +267,14 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       console.log("🚫 Skipping save (loading from Firestore)");
       return;
     }
+
+    // 🔥 ADD THIS LINE
+    console.log("💾 About to save:", {
+      canvasStrokes: canvasStrokes.length,
+      boards: boards.length,
+      images: images.length,
+    });
+
     // Clear any pending save
     if (saveTimeout) {
       clearTimeout(saveTimeout);
@@ -214,20 +315,23 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   useEffect(() => {
     if (!roomId) return;
 
-    let isInitialLoad = true;
+    // 🔥 Load ONCE on mount, don't subscribe
+    const loadInitialData = async () => {
+      try {
+        const roomData = await getRoom(roomId);
 
-    // 🔥 Firestore: Load ONCE on mount, then ignore updates
-    const unsub = subscribeToBoard(roomId, (data) => {
-      if (isInitialLoad) {
-        console.log("📥 Initial Firestore load");
-        loadBoardFromData(data);
-        isInitialLoad = false;
-      } else {
-        console.log("🚫 Ignoring Firestore update (using Socket.io for sync)");
+        if (roomData?.boardData) {
+          console.log("📥 Loading initial data from Firestore");
+          loadBoardFromData(roomData.boardData);
+        }
+      } catch (err) {
+        console.error("Failed to load initial data:", err);
       }
-    });
+    };
 
-    return () => unsub();
+    loadInitialData();
+
+    // NO subscription - Socket.io handles all real-time updates
   }, [roomId]);
 
   useEffect(() => {
@@ -241,22 +345,56 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     socket.emit("userJoined", { userId, roomId });
 
     // Canvas draw handler (unchanged)
-    const handleDraw = ({ roomId: incomingRoom, image }: any) => {
-      if (incomingRoom !== roomId) return;
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (!canvas || !ctx) return;
+    // NEW: Receive single stroke from another user
+    const handleCanvasStroke = (stroke: CanvasStroke) => {
+      if (!crdtRef.current) return;
 
-      if (!image) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      } else {
-        const img = new Image();
-        img.src = image;
-        img.onload = () => {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-        };
-      }
+      console.log("📥 Received stroke from another user:", stroke.id);
+
+      // Update vector clock
+      crdtRef.current.updateClock(stroke.vectorClock);
+
+      // Add to local strokes
+      setCanvasStrokes((prev) => {
+        // Check if we already have this stroke (shouldn't happen, but safety first)
+        if (prev.find((s) => s.id === stroke.id)) {
+          return prev;
+        }
+        return [...prev, stroke].sort((a, b) => a.timestamp - b.timestamp);
+      });
+    };
+
+    // NEW: Sync all strokes when joining room
+    const handleCanvasSync = (strokes: CanvasStroke[]) => {
+      console.log("📥 Socket sync received:", strokes.length, "strokes");
+
+      setCanvasStrokes((currentStrokes) => {
+        // If we have no strokes, accept socket sync
+        if (currentStrokes.length === 0) {
+          console.log("✅ Accepting socket sync (no local strokes)");
+          return strokes.sort((a, b) => a.timestamp - b.timestamp);
+        }
+
+        // 🔥 CRITICAL FIX: Compare which dataset is MORE COMPLETE
+        if (strokes.length > currentStrokes.length) {
+          console.log(
+            `✅ Socket has MORE strokes (${strokes.length} vs ${currentStrokes.length}) - accepting socket data`
+          );
+          return strokes.sort((a, b) => a.timestamp - b.timestamp);
+        }
+
+        // If socket has same or fewer strokes, keep current
+        console.log(
+          `⚠️ Keeping current strokes (${currentStrokes.length}) - socket has ${strokes.length}`
+        );
+        return currentStrokes;
+      });
+    };
+
+    // NEW: Clear canvas for everyone
+    const handleCanvasClear = () => {
+      console.log("🗑️ Canvas cleared by another user");
+      setCanvasStrokes([]);
     };
 
     const handleUserList = (data: any) => {
@@ -375,7 +513,9 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     };
 
     // Register all listeners
-    socket.on("draw", handleDraw);
+    socket.on("canvas:stroke", handleCanvasStroke);
+    socket.on("canvas:sync", handleCanvasSync);
+    socket.on("canvas:clear", handleCanvasClear);
     socket.on("userIsJoined", handleUserList);
     socket.on("allUsers", handleUserList);
     socket.on("board:add", handleBoardAdd);
@@ -386,7 +526,9 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     socket.on("image:delete", handleImageDelete);
 
     return () => {
-      socket.off("draw", handleDraw);
+      socket.off("canvas:stroke", handleCanvasStroke);
+      socket.off("canvas:sync", handleCanvasSync);
+      socket.off("canvas:clear", handleCanvasClear);
       socket.off("userIsJoined", handleUserList);
       socket.off("allUsers", handleUserList);
       socket.off("board:add", handleBoardAdd);
@@ -410,16 +552,28 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     saveThrottled(); // ⭐ SAVE HERE
   };
 
-  const undo = () => socket.emit("undo", { roomId });
-  const redo = () => socket.emit("redo", { roomId });
+  const undo = () => {
+    setCanvasStrokes((prev) => {
+      if (prev.length === 0) return prev;
+      const newStrokes = prev.slice(0, -1); // Remove last stroke
+      socket.emit("canvas:undo", {
+        roomId,
+        strokeId: prev[prev.length - 1].id,
+      });
+      saveThrottled();
+      return newStrokes;
+    });
+  };
+
+  const redo = () => {
+    // TODO: Implement proper redo with deleted strokes tracking
+    console.log("Redo not yet implemented for stroke-based canvas");
+  };
 
   const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      ctx?.clearRect(0, 0, canvas.width, canvas.height);
-      emitCanvasImage();
-    }
+    setCanvasStrokes([]);
+    socket.emit("canvas:clear", { roomId });
+    saveThrottled();
   };
 
   useEffect(() => {
@@ -428,11 +582,16 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    let tempStrokePoints: Point[] = []; // Temporarily store points while drawing
+
     const handleMouseDown = (e: MouseEvent) => {
       setIsDrawing(true);
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+
+      // Start new stroke
+      tempStrokePoints = [{ x, y }];
 
       setStartX(x);
       setStartY(y);
@@ -450,6 +609,10 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
+      // Add point to current stroke
+      tempStrokePoints.push({ x, y });
+
+      // For shapes, restore canvas to show preview
       if (["line", "rect", "circle"].includes(selectedTool) && imageData) {
         ctx.putImageData(imageData, 0, 0);
       }
@@ -497,16 +660,46 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       }
     };
 
-    const finishStroke = () => {
-      if (isDrawing) {
-        emitCanvasImage();
-        setIsDrawing(false);
+    const handleMouseUp = () => {
+      if (!isDrawing) return;
+      setIsDrawing(false);
+
+      if (!crdtRef.current) return;
+
+      // Create stroke object
+      let strokePoints = tempStrokePoints;
+
+      // For shapes, only need start/end points
+      if (["line", "rect", "circle"].includes(selectedTool)) {
+        strokePoints = [
+          { x: startX, y: startY },
+          strokePoints[strokePoints.length - 1],
+        ];
       }
+
+      // Create CRDT stroke
+      const newStroke = crdtRef.current.createStroke({
+        tool: selectedTool as any,
+        points: strokePoints,
+        color: selectedColor,
+        lineWidth: brushSize,
+      });
+
+      // Add to local state
+      setCanvasStrokes((prev) => [...prev, newStroke]);
+
+      // Emit to others
+      socket.emit("canvas:stroke", { roomId, stroke: newStroke });
+
+      // Save to Firestore (throttled)
+      saveThrottled();
+
+      // Reset
+      tempStrokePoints = [];
       ctx.beginPath();
     };
 
-    const handleMouseUp = () => finishStroke();
-    const handleMouseLeave = () => finishStroke();
+    const handleMouseLeave = handleMouseUp;
 
     canvas.addEventListener("mousedown", handleMouseDown);
     canvas.addEventListener("mousemove", handleMouseMove);
@@ -529,6 +722,12 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     imageData,
     roomId,
   ]);
+
+  // Add this near your other useEffects
+
+  useEffect(() => {
+    renderAllStrokes();
+  }, [canvasStrokes]); // Re-render whenever strokes change
 
   // ==========================================
   // 4. BOARD & IMAGE MANAGEMENT LOGIC
@@ -728,20 +927,17 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           name: newName,
         });
 
-        // 🔥 CRITICAL FIX: Save immediately with NEW state inside setState callback
         setBoards((prevBoards) => {
           const newBoards = prevBoards.map((b) => (b.id === id ? updated : b));
 
-          // Save synchronously with the NEW state
+          // 🔥 FIX: Use canvasStrokes, not toDataURL!
           const dataToSave = {
-            canvas: canvasRef.current?.toDataURL("image/png") || null,
-            boards: newBoards, // ← Use NEW state, not stale `boards`
+            canvas: canvasStrokes, // ← FIXED: Save strokes array
+            boards: newBoards,
             images: images,
           };
 
-          console.log(
-            "💾 Saving board name immediately with confirmed new state"
-          );
+          console.log("💾 Saving board name with strokes");
           saveBoard(roomId, dataToSave).catch((err) => {
             console.error("❌ Save failed:", err);
           });
@@ -759,19 +955,17 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           name: newName,
         });
 
-        // Same fix for images
         setImages((prevImages) => {
           const newImages = prevImages.map((i) => (i.id === id ? updated : i));
 
+          // 🔥 FIX: Use canvasStrokes, not toDataURL!
           const dataToSave = {
-            canvas: canvasRef.current?.toDataURL("image/png") || null,
+            canvas: canvasStrokes, // ← FIXED: Save strokes array
             boards: boards,
-            images: newImages, // ← Use NEW state
+            images: newImages,
           };
 
-          console.log(
-            "💾 Saving image name immediately with confirmed new state"
-          );
+          console.log("💾 Saving image name with strokes");
           saveBoard(roomId, dataToSave).catch((err) => {
             console.error("❌ Save failed:", err);
           });
@@ -876,7 +1070,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     const handleBeforeUnload = () => {
       // Last-ditch save
       const dataToSave = {
-        canvas: canvasRef.current?.toDataURL("image/png") || null,
+        canvas: canvasStrokes, // ← FIXED!
         boards,
         images,
       };

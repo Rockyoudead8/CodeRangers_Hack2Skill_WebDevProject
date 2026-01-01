@@ -1,6 +1,7 @@
 //src/app/room/[roomId]/utils/crdt.ts
 
 import { BoardData, VectorClock } from "../types";
+import { CanvasStroke } from "../types/canvas";
 
 export class CRDTManager {
   private vectorClock: VectorClock = {};
@@ -137,5 +138,54 @@ export class CRDTManager {
   reset() {
     this.vectorClock = {};
     this.vectorClock[this.userId] = 0;
+  }
+
+  // Add to existing CRDTManager class
+
+  createStroke(strokeData: Partial<CanvasStroke>): CanvasStroke {
+    const version = this.increment();
+
+    return {
+      ...strokeData,
+      id: `${this.userId}-${Date.now()}-${Math.random()}`, // Unique ID
+      userId: this.userId,
+      timestamp: Date.now(),
+      vectorClock: this.getClock(),
+      version,
+    } as CanvasStroke;
+  }
+
+  // Merge strokes from multiple users
+  mergeStrokes(
+    localStrokes: CanvasStroke[],
+    remoteStrokes: CanvasStroke[]
+  ): CanvasStroke[] {
+    const merged = new Map<string, CanvasStroke>();
+
+    // Add all local strokes
+    localStrokes.forEach((stroke) => {
+      merged.set(stroke.id, stroke);
+    });
+
+    // Merge remote strokes
+    remoteStrokes.forEach((remoteStroke) => {
+      const localStroke = merged.get(remoteStroke.id);
+
+      if (!localStroke) {
+        // New stroke from remote user
+        merged.set(remoteStroke.id, remoteStroke);
+      } else {
+        // Conflict: same stroke ID exists locally
+        // This shouldn't happen with proper IDs, but just in case...
+        if (remoteStroke.timestamp > localStroke.timestamp) {
+          merged.set(remoteStroke.id, remoteStroke);
+        }
+      }
+    });
+
+    // Sort by timestamp for consistent rendering order
+    return Array.from(merged.values()).sort(
+      (a, b) => a.timestamp - b.timestamp
+    );
   }
 }

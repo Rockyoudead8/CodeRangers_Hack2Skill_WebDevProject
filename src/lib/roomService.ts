@@ -1,37 +1,49 @@
 //src/lib/roomService.ts
 
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  getDoc,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
 import { db } from "./firebase";
-import { updateDoc } from "firebase/firestore";
 import { onSnapshot } from "firebase/firestore";
 
-// it subscribes to the board data changes in the firestore
 export function subscribeToBoard(
   roomId: string,
   callback: (data: any) => void
 ) {
   const ref = doc(db, "rooms", roomId);
-
   return onSnapshot(ref, (snap) => {
     const d = snap.data();
     if (d?.boardData) callback(d.boardData);
   });
 }
 
-// it write the data means it saves the data on the firestore
+// 🔥 FIXED: Use setDoc with merge instead of updateDoc
 export async function saveBoard(roomId: string, data: any) {
   const ref = doc(db, "rooms", roomId);
-  await updateDoc(ref, {
-    boardData: data,
-  });
+
+  try {
+    // Use setDoc with merge: true to create if doesn't exist
+    await setDoc(ref, { boardData: data }, { merge: true });
+    console.log("✅ Saved to Firestore");
+  } catch (err) {
+    console.error("❌ Firestore save failed:", err);
+    throw err;
+  }
 }
 
 export async function createRoom(roomId: string, user: any) {
-  console.log("🔥 Trying to create room in Firestore:", roomId, user?.email);
+  console.log("🔥 Creating room in Firestore:", roomId);
   const ref = doc(db, "rooms", roomId);
 
   const snap = await getDoc(ref);
-  if (snap.exists()) return; // Room already exists, don't overwrite
+  if (snap.exists()) {
+    console.log("Room already exists");
+    return;
+  }
 
   await setDoc(ref, {
     createdBy: user?.uid ?? "guest",
