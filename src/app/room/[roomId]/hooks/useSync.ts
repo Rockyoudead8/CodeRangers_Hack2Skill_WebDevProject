@@ -198,8 +198,16 @@ export const useSync = ({
       setImages((prev) => prev.filter((i) => i.id !== imageId));
     };
 
-    // ===== REGISTER ALL LISTENERS =====
+    const handleBoardFocus = ({ boardId, userId }: any) => {
+      if (userId !== userEmail) {
+        // Another user is editing this board
+        console.log(`🔒 ${userId} is now editing board ${boardId}`);
+        // You could disable editing or show a warning
+      }
+    };
 
+    // ===== REGISTER ALL LISTENERS =====
+    socket.on("board:focus", handleBoardFocus);
     socket.on("canvas:stroke", handleCanvasStroke);
     socket.on("canvas:sync", handleCanvasSync);
     socket.on("canvas:clear", handleCanvasClear);
@@ -226,6 +234,7 @@ export const useSync = ({
       socket.off("image:add", handleImageAdd);
       socket.off("image:update", handleImageUpdate);
       socket.off("image:delete", handleImageDelete);
+      socket.off("board:focus", handleBoardFocus);
       socket.disconnect();
     };
   }, [roomId, userEmail]);

@@ -105,15 +105,44 @@ app.prepare().then(() => {
       io.to(roomId).emit("board:add", boardData);
     });
 
+    // ADD BUFFER FOR OUT-OF-ORDER UPDATES
+    const boardUpdateBuffers = {}; // { roomId: { boardId: [updates] } }
+
     socket.on("board:update", ({ roomId, boardData }) => {
       if (!boardHistory[roomId]) return;
+
+      // ✅ Initialize buffer
+      if (!boardUpdateBuffers[roomId]) boardUpdateBuffers[roomId] = {};
+      if (!boardUpdateBuffers[roomId][boardData.id]) {
+        boardUpdateBuffers[roomId][boardData.id] = [];
+      }
+
+      const buffer = boardUpdateBuffers[roomId][boardData.id];
+      buffer.push(boardData);
+
+      // ✅ Sort by sequence number
+      buffer.sort((a, b) => a.sequence - b.sequence);
+
+      // ✅ Apply updates in order
+      const latestUpdate = buffer[buffer.length - 1];
+
       const index = boardHistory[roomId].findIndex(
         (b) => b.id === boardData.id
       );
       if (index !== -1) {
-        boardHistory[roomId][index] = boardData;
-        io.to(roomId).emit("board:update", boardData);
+        // Only apply if this is actually newer
+        if (
+          latestUpdate.sequence > (boardHistory[roomId][index].sequence || 0)
+        ) {
+          boardHistory[roomId][index] = latestUpdate;
+          io.to(roomId).emit("board:update", latestUpdate);
+        }
       }
+
+      // ✅ Clear buffer after 5 seconds
+      setTimeout(() => {
+        boardUpdateBuffers[roomId][boardData.id] = [];
+      }, 5000);
     });
 
     socket.on("board:delete", ({ roomId, boardId }) => {

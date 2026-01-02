@@ -65,6 +65,27 @@ export class CRDTManager {
     );
   }
 
+  private mergeTextContent(localHtml: string, remoteHtml: string): string {
+    // Strip HTML tags for comparison
+    const stripTags = (html: string) => html.replace(/<[^>]*>/g, "");
+    const localText = stripTags(localHtml);
+    const remoteText = stripTags(remoteHtml);
+
+    // If remote is a superset of local, use remote
+    if (remoteText.includes(localText)) {
+      return remoteHtml;
+    }
+
+    // If local is a superset of remote, use local
+    if (localText.includes(remoteText)) {
+      return localHtml;
+    }
+
+    // If they diverged, use the longer one (simple heuristic)
+    // In production, use proper diff algorithm (e.g., Myers' diff)
+    return localText.length >= remoteText.length ? localHtml : remoteHtml;
+  }
+
   // Resolve conflict between two concurrent writes using Last-Write-Wins
   resolveConflict(local: BoardData, remote: BoardData): BoardData {
     // If one happened before the other, choose the later one
@@ -75,6 +96,21 @@ export class CRDTManager {
     if (this.happensBefore(remote.vectorClock, local.vectorClock)) {
       console.log(`🔄 Local operation is newer (causal order)`);
       return local;
+    }
+
+    // ✅ NEW: Special handling for text boards
+    if (local.type === "text" && remote.type === "text") {
+      const mergedContent = this.mergeTextContent(
+        local.content,
+        remote.content
+      );
+
+      // Use the one with higher version, but with merged content
+      if (remote.version > local.version) {
+        return { ...remote, content: mergedContent };
+      } else {
+        return { ...local, content: mergedContent };
+      }
     }
 
     // Concurrent writes: use Last-Write-Wins based on timestamp
@@ -122,12 +158,15 @@ export class CRDTManager {
   }
 
   // Create operation metadata for a new/updated board
+  // crdt.ts - MODIFY createOperation
+
   createOperation(board: Partial<BoardData>): BoardData {
     const version = this.increment();
 
     return {
       ...board,
       version,
+      sequence: Date.now(), // ✅ Add monotonic sequence number
       lastModifiedBy: this.userId,
       lastModifiedAt: Date.now(),
       vectorClock: this.getClock(),

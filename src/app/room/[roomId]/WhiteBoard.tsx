@@ -76,6 +76,9 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
+  const [focusedBoardId, setFocusedBoardId] = useState<number | string | null>(
+    null
+  );
 
   const handleSaveToDrive = async () => {
     try {
@@ -222,7 +225,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       clearTimeout(saveTimeout);
     }
 
-     saveTimeout = setTimeout(() => {
+    saveTimeout = setTimeout(() => {
       const now = Date.now();
       if (now - lastSave > 500) {
         lastSave = now;
@@ -481,30 +484,60 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   };
 
   // Around line 1050 - REPLACE updateBoardContent
+  // Create a map to store debounce timers
+  const debouncedBoardUpdates = useRef<Map<number | string, NodeJS.Timeout>>(
+    new Map()
+  );
+
   const updateBoardContent = (id: number | string, newContent: string) => {
     if (!crdtRef.current) return;
 
     const board = boards.find((b) => b.id === id);
     if (!board || board.content === newContent) return;
 
-    const updatedBoard = crdtRef.current.createOperation({
-      ...board,
-      content: newContent,
-    });
+    // ✅ Update local state immediately (for responsive UI)
+    setBoards((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, content: newContent } : b))
+    );
 
-    console.log("✏️ Updating board content with CRDT:", {
-      id: updatedBoard.id,
-      version: updatedBoard.version,
-    });
+    // ✅ Debounce the CRDT operation and socket emission
+    const existingTimeout = debouncedBoardUpdates.current.get(id);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
 
-    setBoards((prev) => {
-      const updatedBoards = prev.map((b) => (b.id === id ? updatedBoard : b));
-      // 🔥 Save with NEW state
-      saveThrottled(canvasStrokes, updatedBoards, images);
-      return updatedBoards;
-    });
+    const newTimeout = setTimeout(() => {
+      if (!crdtRef.current) return;
 
-    socket.emit("board:update", { roomId, boardData: updatedBoard });
+      const currentBoard = boards.find((b) => b.id === id);
+      if (!currentBoard) return;
+
+      const updatedBoard = crdtRef.current.createOperation({
+        ...currentBoard,
+        content: newContent,
+      });
+
+      console.log("✏️ Updating board content with CRDT:", {
+        id: updatedBoard.id,
+        version: updatedBoard.version,
+      });
+
+      // Update with CRDT metadata
+      setBoards((prevBoards) => {
+        const updatedBoards = prevBoards.map((b) =>
+          b.id === id ? updatedBoard : b
+        );
+
+        // Save with new state
+        saveThrottled(canvasStrokes, updatedBoards, images);
+
+        return updatedBoards;
+      });
+
+      socket.emit("board:update", { roomId, boardData: updatedBoard });
+    }, 500); // Wait 500ms after typing stops
+
+    debouncedBoardUpdates.current.set(id, newTimeout);
   };
 
   // Around line 1100 - REPLACE emitDeleteItem
@@ -747,6 +780,9 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                   updateItemName(board.id, newName, "text")
                 }
                 onDelete={() => emitDeleteItem(board.id, "text")}
+                socket={socket}
+                roomId={roomId}
+                userEmail={userEmail}
               />
             </div>
           ))}

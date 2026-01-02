@@ -10,15 +10,18 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import FontFamily from "@tiptap/extension-font-family";
 
 interface BoardProps {
-  id: number | string; // Updated to allow string or number
+  id: number | string;
   name: string;
   initialPos: { x: number; y: number };
   content?: string;
   onContentChange?: (content: string) => void;
   onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
   onRename: (newName: string) => void;
-  // 1. NEW PROP
   onDelete: () => void;
+  // ✅ Add these new props
+  socket?: any;
+  roomId?: string;
+  userEmail?: string;
 }
 
 const Board = forwardRef<HTMLDivElement, BoardProps>(
@@ -32,6 +35,9 @@ const Board = forwardRef<HTMLDivElement, BoardProps>(
       onMouseDown,
       onRename,
       onDelete,
+      socket,
+      roomId,
+      userEmail,
     },
     ref
   ) => {
@@ -60,9 +66,49 @@ const Board = forwardRef<HTMLDivElement, BoardProps>(
       },
     });
 
+    // Board.tsx - REPLACE the useEffect (lines 126-130)
+
     useEffect(() => {
-      if (editor && content && content !== editor.getHTML()) {
-        editor.commands.setContent(content);
+      if (!editor || !content) return;
+
+      const currentHtml = editor.getHTML();
+      if (currentHtml === content) return;
+
+      if (editor.isFocused) {
+        console.log("⚠️ Skipping remote update - user is actively editing");
+        return;
+      }
+
+      // ✅ Parse HTML using TipTap's parser
+      try {
+        const parser =
+          editor.view.someProp("clipboardParser") ||
+          editor.view.someProp("domParser");
+
+        if (parser) {
+          // Create a temporary div to parse the HTML
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = content;
+
+          // Parse the HTML into a ProseMirror doc
+          const doc = parser.parse(tempDiv);
+
+          // Replace the entire document
+          editor.view.updateState(
+            editor.view.state.apply(
+              editor.view.state.tr.replaceWith(
+                0,
+                editor.view.state.doc.content.size,
+                doc.content
+              )
+            )
+          );
+        } else {
+          // Fallback to setContent
+          editor.commands.setContent(content);
+        }
+      } catch (error) {
+        console.error("Failed to update editor content:", error);
       }
     }, [content, editor]);
 
@@ -74,11 +120,29 @@ const Board = forwardRef<HTMLDivElement, BoardProps>(
       }
     };
 
-    // 2. NEW: Handle Delete Click
     const handleDeleteClick = (e: React.MouseEvent) => {
       e.stopPropagation();
       if (window.confirm("Are you sure you want to delete this board?")) {
         onDelete();
+      }
+    };
+
+    // ✅ Add focus/blur handlers
+    const handleFocus = () => {
+      if (socket && roomId && userEmail) {
+        socket.emit("board:focus", { roomId, boardId: id, userId: userEmail });
+        console.log("📝 Board focused:", id);
+      }
+    };
+
+    const handleBlur = () => {
+      if (socket && roomId && userEmail) {
+        socket.emit("board:unfocus", {
+          roomId,
+          boardId: id,
+          userId: userEmail,
+        });
+        console.log("📝 Board blurred:", id);
       }
     };
 
@@ -224,7 +288,7 @@ const Board = forwardRef<HTMLDivElement, BoardProps>(
                 </svg>
               </button>
 
-              {/* 3. NEW: Delete Button */}
+              {/* Delete Button */}
               <button
                 onClick={handleDeleteClick}
                 className="p-1.5 hover:bg-red-100 rounded text-gray-500 hover:text-red-600 transition-colors"
@@ -254,6 +318,8 @@ const Board = forwardRef<HTMLDivElement, BoardProps>(
         <div
           className="p-4 cursor-text"
           onMouseDown={(e) => e.stopPropagation()}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
         >
           <EditorContent editor={editor} />
         </div>
