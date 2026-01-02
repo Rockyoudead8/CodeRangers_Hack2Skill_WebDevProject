@@ -2,10 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { socket } from '../lib/socket';
-import Router from 'next/router';
 import LoadingScreen from "../../../components/Loading";
-import { Sparkles, Copy, Check, PlusCircle, Users, KeyRound, ArrowRightCircle } from "lucide-react";
+import {
+  Sparkles,
+  Copy,
+  Check,
+  PlusCircle,
+  Users,
+  KeyRound,
+  ArrowRightCircle
+} from "lucide-react";
 import useUser from '@/hooks/useUser';
 
 export default function Home() {
@@ -14,7 +20,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const router = useRouter();
   const { user, loading } = useUser();
-  
+
   useEffect(() => {
     if (!loading && user) {
       router.push("/home");
@@ -22,10 +28,6 @@ export default function Home() {
   }, [user, loading, router]);
 
   if (loading) return <LoadingScreen />;
-
-
-  
-
 
   const generateRoomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -65,16 +67,26 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-950 flex items-center justify-center p-6 text-white">
+    <div
+      className="
+        min-h-screen flex items-center justify-center p-6
+        text-gray-800 dark:text-white
+        bg-gradient-to-br
+        from-blue-100 via-grey-100 to-purple-100
+        dark:from-gray-900 dark:via-black dark:to-gray-950
+        transition-colors
+      "
+    >
       <div className="w-full max-w-6xl mx-auto">
 
+        {/* Header */}
         <div className="text-center mb-10 space-y-2">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-wide flex items-center justify-center gap-3">
-            <Sparkles className="text-blue-400 animate-pulse" />
+            <Sparkles className="text-blue-500 dark:text-blue-400 animate-pulse" />
             Real-Time Collaboration Hub
-            <Sparkles className="text-purple-400 animate-pulse" />
+            <Sparkles className="text-purple-500 dark:text-purple-400 animate-pulse" />
           </h1>
-          <p className="text-gray-400 text-sm">
+          <p className="text-gray-700 dark:text-gray-400 text-sm">
             Create or join a live collaborative whiteboard. No pressure. Just chaos.
           </p>
         </div>
@@ -82,15 +94,23 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
           {/* Create Room */}
-          <div className="bg-gray-900/70 backdrop-blur-xl border border-gray-800 rounded-2xl shadow-xl hover:shadow-blue-800/40 hover:-translate-y-1 transition p-8">
+          <div
+            className="
+              backdrop-blur-xl rounded-2xl p-8 transition
+              bg-gray-50/80 border border-gray-300
+              dark:bg-gray-900/70 dark:border-gray-800
+              shadow-xl hover:-translate-y-1
+              hover:shadow-blue-800/40
+            "
+          >
             <div className="flex items-center justify-center gap-2 mb-6">
-              <PlusCircle className="text-blue-400" size={34} />
-              <h2 className="text-3xl font-bold text-blue-400 tracking-wide">
+              <PlusCircle className="text-blue-500 dark:text-blue-400" size={34} />
+              <h2 className="text-3xl font-bold text-blue-500 dark:text-blue-400 tracking-wide">
                 Create Room
               </h2>
             </div>
 
-            <label className="block text-sm text-gray-400 mb-2">
+            <label className="block text-sm text-gray-700 dark:text-gray-400 mb-2">
               Room Code
             </label>
 
@@ -100,7 +120,13 @@ export default function Home() {
                 value={roomCode}
                 readOnly
                 placeholder="Generate room code"
-                className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="
+                  flex-1 px-4 py-3 rounded-lg
+                  bg-gray-50 border border-gray-300
+                  text-gray-900 placeholder-gray-500
+                  dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200
+                  focus:outline-none focus:ring-2 focus:ring-blue-500
+                "
               />
 
               <div className="flex gap-3">
@@ -114,7 +140,11 @@ export default function Home() {
 
                 <button
                   onClick={handleCopy}
-                  className="px-5 py-3 bg-transparent border border-red-500 text-red-400 hover:bg-red-500/10 font-semibold rounded-lg flex items-center gap-2 transition"
+                  className="
+                    px-5 py-3 font-semibold rounded-lg flex items-center gap-2 transition
+                    border border-red-500 text-red-500
+                    hover:bg-red-500/10
+                  "
                 >
                   {copied ? <Check size={18} /> : <Copy size={18} />}
                   {copied ? 'Copied' : 'Copy'}
@@ -132,15 +162,23 @@ export default function Home() {
           </div>
 
           {/* Join Room */}
-          <div className="bg-gray-900/70 backdrop-blur-xl border border-gray-800 rounded-2xl shadow-xl hover:shadow-purple-800/40 hover:-translate-y-1 transition p-8">
+          <div
+            className="
+              backdrop-blur-xl rounded-2xl p-8 transition
+              bg-gray-50/80 border border-gray-300
+              dark:bg-gray-900/70 dark:border-gray-800
+              shadow-xl hover:-translate-y-1
+              hover:shadow-purple-800/40
+            "
+          >
             <div className="flex items-center justify-center gap-2 mb-6">
-              <Users className="text-purple-400" size={34} />
-              <h2 className="text-3xl font-bold text-purple-400 tracking-wide">
+              <Users className="text-purple-500 dark:text-purple-400" size={34} />
+              <h2 className="text-3xl font-bold text-purple-500 dark:text-purple-400 tracking-wide">
                 Join Room
               </h2>
             </div>
 
-            <label className="block text-sm text-gray-400 mb-2">
+            <label className="block text-sm text-gray-700 dark:text-gray-400 mb-2">
               Room Code
             </label>
 
@@ -149,7 +187,13 @@ export default function Home() {
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
               placeholder="Enter room code"
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="
+                w-full px-4 py-3 rounded-lg
+                bg-gray-50 border border-gray-300
+                text-gray-900 placeholder-gray-500
+                dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200
+                focus:outline-none focus:ring-2 focus:ring-purple-500
+              "
             />
 
             <button
