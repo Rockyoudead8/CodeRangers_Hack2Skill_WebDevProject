@@ -28,7 +28,7 @@ type Position = { x: number; y: number };
 
 import { BoardData } from "./types";
 import type { CanvasStroke, Point } from "./types/canvas";
-import { useDraw } from "./hooks/draw";
+import { useDraw } from "./hooks/useDraw";
 import { useSync } from "./hooks/useSync";
 
 interface WhiteboardProps {
@@ -222,8 +222,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       clearTimeout(saveTimeout);
     }
 
-    // Schedule save for 500ms (reduced from 2000ms for better responsiveness)
-    saveTimeout = setTimeout(() => {
+     saveTimeout = setTimeout(() => {
       const now = Date.now();
       if (now - lastSave > 500) {
         lastSave = now;
@@ -331,7 +330,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     if (!canvas || !roomId) return;
     const image = canvas.toDataURL("image/png");
     socket.emit("draw", { roomId, image });
-    saveThrottled(); // ⭐ SAVE HERE
+    saveThrottled(canvasStrokes, boards, images); // ⭐ SAVE HERE
   };
 
   const undo = () => {
@@ -342,7 +341,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         roomId,
         strokeId: prev[prev.length - 1].id,
       });
-      saveThrottled();
+      saveThrottled(newStrokes, boards, images);
       return newStrokes;
     });
   };
@@ -355,7 +354,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const clearCanvas = () => {
     setCanvasStrokes([]);
     socket.emit("canvas:clear", { roomId });
-    saveThrottled();
+    saveThrottled([], boards, images);
   };
   // Use the useDraw hook
   useDraw({
@@ -377,32 +376,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       canvasStrokes,
     });
   }, [canvasStrokes]); // Re-render whenever strokes change
-
-  // ==========================================
-  // 4. BOARD & IMAGE MANAGEMENT LOGIC
-  // ==========================================
-
-  // const checkForOverlap = (id: number | string) => {
-  //   const currentNoteRef = itemRefs.current[id]?.current;
-  //   if (!currentNoteRef) return false;
-  //   const currentRect = currentNoteRef.getBoundingClientRect();
-
-  //   const allItems = [...boards, ...images];
-
-  //   return allItems.some((item) => {
-  //     if (item.id === id) return false;
-  //     const otherNoteRef = itemRefs.current[item.id]?.current;
-  //     if (!otherNoteRef) return false;
-  //     const otherRect = otherNoteRef.getBoundingClientRect();
-
-  //     return !(
-  //       currentRect.right < otherRect.left ||
-  //       currentRect.left > otherRect.right ||
-  //       currentRect.bottom < otherRect.top ||
-  //       currentRect.top > otherRect.bottom
-  //     );
-  //   });
-  // };
 
   // Around line 800 - REPLACE handleAddBoard
   const handleAddBoard = () => {
