@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Poppins } from "next/font/google";
 import "./globals.css";
-import Navbar from "../../components/Navbar";
 import { ThemeProvider } from "next-themes";
+import LayoutShell from "../../components/LayoutShell";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -40,12 +40,9 @@ export default function RootLayout({
           defaultTheme="dark"
           enableSystem={false}
         >
-
-
-          <Navbar />
-          <div className="pt-20 min-h-screen bg-white text-gray-900 dark:bg-black dark:text-gray-100 transition-colors">
+          <LayoutShell>
             {children}
-          </div>
+          </LayoutShell>
         </ThemeProvider>
       </body>
     </html>

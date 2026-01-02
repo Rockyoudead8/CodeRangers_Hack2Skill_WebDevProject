@@ -84,6 +84,7 @@ export default function Login() {
   return (
     <div
       className="
+        pt-15
         min-h-screen w-full flex items-center justify-center relative overflow-hidden
         bg-gradient-to-br
         from-blue-100 via-gray-100 to-purple-100

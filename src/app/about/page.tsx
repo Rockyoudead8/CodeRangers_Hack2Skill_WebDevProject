@@ -15,7 +15,7 @@ export default function AboutPage() {
       "
     >
       {/* Title Section */}
-      <div className="max-w-4xl mx-auto text-center">
+      <div className="pt-30 max-w-4xl mx-auto text-center">
         <h1 className="text-5xl font-extrabold">
           About <span className="text-blue-600 dark:text-blue-500">CollabBoard</span>
         </h1>

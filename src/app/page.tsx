@@ -43,7 +43,7 @@ export default function LandingPage() {
       "
     >
       {/* Hero Section */}
-      <div className="flex flex-col items-center text-center mt-14 px-6">
+      <div className="pt-20 flex flex-col items-center text-center mt-14 px-6">
         <div className="flex items-center gap-2">
           <Sparkles className="text-blue-500 dark:text-blue-400 animate-pulse" />
           <p className="text-gray-600 dark:text-gray-400 text-sm tracking-wide">
