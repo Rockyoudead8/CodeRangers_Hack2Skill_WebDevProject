@@ -282,14 +282,15 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
     saveTimeout = setTimeout(() => {
       const now = Date.now();
-      if (now - lastSave > 500) {
+      if (now - lastSave > 2000) {
+        // Changed from 500 to 2000
         lastSave = now;
         console.log("💾 Saving board to Firestore...");
         saveBoard(roomId, dataToSave).catch((err) => {
           console.error("❌ Firestore save failed:", err);
         });
       }
-    }, 2000);
+    }, 5000); // Changed from 2000 to 5000
   }
 
   // ==========================================
@@ -359,27 +360,27 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   });
 
   // Auto-save boards and images when they change (from remote updates)
-  useEffect(() => {
-    if (isLoadingFromFirestore.current) return;
+  // useEffect(() => {
+  //   if (isLoadingFromFirestore.current) return;
 
-    // Skip if no data
-    if (boards.length === 0 && images.length === 0) return;
+  //   // Skip if no data
+  //   if (boards.length === 0 && images.length === 0) return;
 
-    // Debounce to avoid too many saves
-    const timer = setTimeout(() => {
-      console.log("💾 Auto-saving boards/images after remote update");
-      const dataToSave = {
-        canvas: canvasStrokes,
-        boards: boards,
-        images: images,
-      };
-      saveBoard(roomId, dataToSave).catch((err) => {
-        console.error("❌ Auto-save failed:", err);
-      });
-    }, 1000);
+  //   // Debounce to avoid too many saves
+  //   const timer = setTimeout(() => {
+  //     console.log("💾 Auto-saving boards/images after remote update");
+  //     const dataToSave = {
+  //       canvas: canvasStrokes,
+  //       boards: boards,
+  //       images: images,
+  //     };
+  //     saveBoard(roomId, dataToSave).catch((err) => {
+  //       console.error("❌ Auto-save failed:", err);
+  //     });
+  //   }, 1000);
 
-    return () => clearTimeout(timer);
-  }, [boards, images, canvasStrokes, roomId]); // Include all dependencies
+  //   return () => clearTimeout(timer);
+  // }, [boards, images, canvasStrokes, roomId]); // Include all dependencies
 
   // ==========================================
   // CANVAS DRAWING  ⭐ SAVE TO FIRESTORE WHEN DONE
