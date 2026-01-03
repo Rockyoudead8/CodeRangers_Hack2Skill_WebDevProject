@@ -1,7 +1,7 @@
 //src/app/room/[roomId]/utils/crdt.ts
 
 import { BoardData, VectorClock } from "../types";
-import { CanvasStroke } from "../types/canvas";
+import { CanvasStroke, CanvasDimensions } from "../types/canvas";
 
 export class CRDTManager {
   private vectorClock: VectorClock = {};
@@ -226,5 +226,55 @@ export class CRDTManager {
     return Array.from(merged.values()).sort(
       (a, b) => a.timestamp - b.timestamp
     );
+  }
+  // NEW: Create dimension change operation
+  createDimensionOperation(width: number, height: number): CanvasDimensions {
+    const version = this.increment();
+
+    return {
+      width,
+      height,
+      version,
+      lastModifiedBy: this.userId,
+      lastModifiedAt: Date.now(),
+      vectorClock: this.getClock(),
+    };
+  }
+
+  // NEW: Resolve dimension conflicts using Max-Merge strategy
+  resolveDimensionConflict(
+    local: CanvasDimensions,
+    remote: CanvasDimensions
+  ): CanvasDimensions {
+    // If one happened before the other, choose the later one
+    if (this.happensBefore(local.vectorClock, remote.vectorClock)) {
+      console.log(`📐 Remote dimension is newer (causal order)`);
+      return remote;
+    }
+    if (this.happensBefore(remote.vectorClock, local.vectorClock)) {
+      console.log(`📐 Local dimension is newer (causal order)`);
+      return local;
+    }
+
+    // Concurrent writes: use Max-Merge strategy
+    console.log(`⚠️ Concurrent dimension changes, applying Max-Merge`);
+
+    // Take the maximum of each dimension to accommodate all content
+    const mergedWidth = Math.max(local.width, remote.width);
+    const mergedHeight = Math.max(local.height, remote.height);
+
+    // Use the latest timestamp for metadata
+    const isRemoteNewer = remote.lastModifiedAt > local.lastModifiedAt;
+
+    return {
+      width: mergedWidth,
+      height: mergedHeight,
+      version: Math.max(local.version, remote.version),
+      lastModifiedBy: isRemoteNewer
+        ? remote.lastModifiedBy
+        : local.lastModifiedBy,
+      lastModifiedAt: Math.max(local.lastModifiedAt, remote.lastModifiedAt),
+      vectorClock: this.getClock(),
+    };
   }
 }

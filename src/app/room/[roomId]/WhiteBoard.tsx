@@ -27,7 +27,7 @@ import {
 type Position = { x: number; y: number };
 
 import { BoardData } from "./types";
-import type { CanvasStroke, Point } from "./types/canvas";
+import type { CanvasStroke, Point, CanvasDimensions } from "./types/canvas";
 import { useDraw } from "./hooks/useDraw";
 import { useSync } from "./hooks/useSync";
 
@@ -79,6 +79,19 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [focusedBoardId, setFocusedBoardId] = useState<number | string | null>(
     null
   );
+  const [canvasDimensions, setCanvasDimensions] = useState<CanvasDimensions>({
+    width: 1920,
+    height: 1080,
+    version: 0,
+    lastModifiedBy: userEmail,
+    lastModifiedAt: Date.now(),
+    vectorClock: {},
+  });
+
+  const [expandAmount, setExpandAmount] = useState<number>(0);
+  const [expandDirection, setExpandDirection] = useState<
+    "horizontal" | "vertical"
+  >("horizontal");
 
   const handleSaveToDrive = async () => {
     try {
@@ -132,7 +145,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
   function exportBoardData() {
     return {
-      canvas: canvasStrokes, // Save strokes array, not base64 image
+      canvas: canvasStrokes,
+      dimensions: canvasDimensions, // NEW
       boards,
       images,
     };
@@ -146,38 +160,74 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
     isLoadingFromFirestore.current = true;
 
-    console.log("📥 Restoring board from Firestore", {
+    console.log("🔥 Restoring board from Firestore", {
       hasCanvas: !!data.canvas,
       canvasLength: Array.isArray(data.canvas) ? data.canvas.length : 0,
+      hasDimensions: !!data.dimensions,
       hasBoards: !!data.boards,
       boardsLength: data.boards?.length || 0,
       hasImages: !!data.images,
       imagesLength: data.images?.length || 0,
     });
 
-    // 🔥 CRITICAL FIX: Only load if Firestore has data
+    // Canvas strokes loading (unchanged)
     if (data.canvas && Array.isArray(data.canvas) && data.canvas.length > 0) {
       console.log("✅ Restoring", data.canvas.length, "strokes from Firestore");
 
-      // 🔥 Use callback to compare with current state
       setCanvasStrokes((currentStrokes) => {
-        // If current is empty, load from Firestore
         if (currentStrokes.length === 0) {
           return data.canvas;
         }
 
-        // If Firestore has MORE strokes, use it
         if (data.canvas.length > currentStrokes.length) {
           console.log("✅ Firestore has more data, using it");
           return data.canvas;
         }
 
-        // Otherwise keep current
         console.log("⚠️ Keeping current strokes");
         return currentStrokes;
       });
     } else {
       console.log("⚠️ Firestore has no canvas data - keeping current strokes");
+    }
+
+    // 🔥 FIX: Only load dimensions if they're LARGER than current
+    if (data.dimensions) {
+      console.log("📐 Firestore dimensions:", data.dimensions);
+
+      setCanvasDimensions((currentDimensions) => {
+        const remoteWidth = data.dimensions.width;
+        const remoteHeight = data.dimensions.height;
+        const currentWidth = currentDimensions.width;
+        const currentHeight = currentDimensions.height;
+
+        // Use Max-Merge strategy: take the larger of each dimension
+        if (remoteWidth > currentWidth || remoteHeight > currentHeight) {
+          console.log(
+            `✅ Firestore has larger dimensions (${remoteWidth}x${remoteHeight} vs ${currentWidth}x${currentHeight})`
+          );
+
+          return {
+            width: Math.max(remoteWidth, currentWidth),
+            height: Math.max(remoteHeight, currentHeight),
+            version: Math.max(
+              data.dimensions.version,
+              currentDimensions.version
+            ),
+            lastModifiedBy: data.dimensions.lastModifiedBy,
+            lastModifiedAt: Math.max(
+              data.dimensions.lastModifiedAt,
+              currentDimensions.lastModifiedAt
+            ),
+            vectorClock: data.dimensions.vectorClock,
+          };
+        }
+
+        console.log(
+          `⚠️ Keeping current dimensions (${currentWidth}x${currentHeight}) - Firestore has ${remoteWidth}x${remoteHeight}`
+        );
+        return currentDimensions;
+      });
     }
 
     if (data.boards && data.boards.length > 0) {
@@ -197,25 +247,30 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   let saveTimeout: NodeJS.Timeout | null = null;
 
   // Around line 250 - REPLACE the entire saveThrottled function
+  // REPLACE saveThrottled in WhiteBoard.tsx (around line 270)
+
   function saveThrottled(
     currentCanvasStrokes?: CanvasStroke[],
     currentBoards?: BoardData[],
-    currentImages?: BoardData[]
+    currentImages?: BoardData[],
+    currentDimensions?: CanvasDimensions // 🔥 NEW PARAMETER
   ) {
     if (isLoadingFromFirestore.current) {
       console.log("🚫 Skipping save (loading from Firestore)");
       return;
     }
 
-    // Use provided state or fall back to ref values
+    // 🔥 FIX: Include dimensions in save
     const dataToSave = {
       canvas: currentCanvasStrokes || canvasStrokes,
+      dimensions: currentDimensions || canvasDimensions, // 🔥 CRITICAL FIX
       boards: currentBoards || boards,
       images: currentImages || images,
     };
 
     console.log("💾 About to save:", {
       canvasStrokes: dataToSave.canvas.length,
+      dimensions: `${dataToSave.dimensions.width}x${dataToSave.dimensions.height}`, // 🔥 LOG THIS
       boards: dataToSave.boards.length,
       images: dataToSave.images.length,
     });
@@ -297,6 +352,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     userEmail,
     crdtRef,
     setCanvasStrokes,
+    setCanvasDimensions,
     setUsers,
     setBoards,
     setImages,
@@ -333,7 +389,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     if (!canvas || !roomId) return;
     const image = canvas.toDataURL("image/png");
     socket.emit("draw", { roomId, image });
-    saveThrottled(canvasStrokes, boards, images); // ⭐ SAVE HERE
+    saveThrottled(canvasStrokes, boards, images, canvasDimensions); // ⭐ SAVE HERE
   };
 
   const undo = () => {
@@ -344,7 +400,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         roomId,
         strokeId: prev[prev.length - 1].id,
       });
-      saveThrottled(newStrokes, boards, images);
+      saveThrottled(newStrokes, boards, images, canvasDimensions);
       return newStrokes;
     });
   };
@@ -357,7 +413,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const clearCanvas = () => {
     setCanvasStrokes([]);
     socket.emit("canvas:clear", { roomId });
-    saveThrottled([], boards, images);
+    saveThrottled([], boards, images, canvasDimensions);
   };
   // Use the useDraw hook
   useDraw({
@@ -369,6 +425,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     setCanvasStrokes,
     roomId,
     saveThrottled,
+    canvasDimensions,
   });
 
   // Add this near your other useEffects
@@ -407,7 +464,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     setBoards((prev) => {
       const updatedBoards = [...prev, newBoard];
       // 🔥 CRITICAL: Save with NEW state inside setState callback
-      saveThrottled(canvasStrokes, updatedBoards, images);
+      saveThrottled(canvasStrokes, updatedBoards, images, canvasDimensions);
       return updatedBoards;
     });
 
@@ -529,7 +586,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         );
 
         // Save with new state
-        saveThrottled(canvasStrokes, updatedBoards, images);
+        saveThrottled(canvasStrokes, updatedBoards, images, canvasDimensions);
 
         return updatedBoards;
       });
@@ -547,7 +604,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       setBoards((prev) => {
         const updatedBoards = prev.filter((b) => b.id !== id);
         // 🔥 Save with NEW state
-        saveThrottled(canvasStrokes, updatedBoards, images);
+        saveThrottled(canvasStrokes, updatedBoards, images, canvasDimensions);
         return updatedBoards;
       });
     } else {
@@ -555,7 +612,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       setImages((prev) => {
         const updatedImages = prev.filter((img) => img.id !== id);
         // 🔥 Save with NEW state
-        saveThrottled(canvasStrokes, boards, updatedImages);
+        saveThrottled(canvasStrokes, boards, updatedImages, canvasDimensions);
         return updatedImages;
       });
     }
@@ -565,14 +622,72 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Set canvas to a large fixed size ONCE
-    canvas.width = 3000;
-    canvas.height = 2000;
+    // Apply dimensions from state
+    canvas.width = canvasDimensions.width;
+    canvas.height = canvasDimensions.height;
 
-    console.log("✅ Canvas fixed at:", canvas.width, "x", canvas.height);
+    console.log(
+      "✅ Canvas resized to:",
+      canvasDimensions.width,
+      "x",
+      canvasDimensions.height
+    );
 
-    // NO resize listener - canvas stays at fixed size
-  }, []);
+    // Re-render strokes when dimensions change
+    renderAllStrokes({
+      canvasRef,
+      canvasStrokes,
+    });
+  }, [canvasDimensions]);
+
+  // REPLACE handleExpandCanvas in WhiteBoard.tsx (around line 850)
+
+  const handleExpandCanvas = () => {
+    if (!expandAmount || expandAmount <= 0) {
+      alert("Please enter a valid amount (positive number)");
+      return;
+    }
+
+    if (!crdtRef.current) {
+      console.error("❌ CRDT Manager not initialized");
+      return;
+    }
+
+    // Calculate new dimensions
+    const newWidth =
+      expandDirection === "horizontal"
+        ? canvasDimensions.width + expandAmount
+        : canvasDimensions.width;
+
+    const newHeight =
+      expandDirection === "vertical"
+        ? canvasDimensions.height + expandAmount
+        : canvasDimensions.height;
+
+    // Create CRDT operation
+    const newDimensions = crdtRef.current.createDimensionOperation(
+      newWidth,
+      newHeight
+    );
+
+    console.log("📐 Expanding canvas:", {
+      direction: expandDirection,
+      amount: expandAmount,
+      newSize: `${newWidth}x${newHeight}`,
+    });
+
+    // Update local state
+    setCanvasDimensions(newDimensions);
+
+    // Emit to other users
+    socket.emit("canvas:resize", { roomId, dimensions: newDimensions });
+
+    // 🔥 FIX: Pass newDimensions to saveThrottled
+    saveThrottled(canvasStrokes, boards, images, newDimensions);
+
+    // Reset UI
+    setExpandAmount(0);
+  };
 
   // Emergency save before page closes
   useEffect(() => {
@@ -632,10 +747,45 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-mono">
               {roomId}
             </code>
+            {/* NEW: Display current canvas size */}
+            <span className="ml-2 text-blue-600 font-medium">
+              {canvasDimensions.width}×{canvasDimensions.height}px
+            </span>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
+          {/* NEW: Canvas Resize Controls */}
+          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+            <input
+              type="number"
+              value={expandAmount || ""}
+              onChange={(e) => setExpandAmount(Number(e.target.value))}
+              placeholder="Amount"
+              min="1"
+              className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+
+            <select
+              value={expandDirection}
+              onChange={(e) =>
+                setExpandDirection(e.target.value as "horizontal" | "vertical")
+              }
+              className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="horizontal">Horizontal</option>
+              <option value="vertical">Vertical</option>
+            </select>
+
+            <button
+              onClick={handleExpandCanvas}
+              disabled={!expandAmount || expandAmount <= 0}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition-colors"
+            >
+              Expand
+            </button>
+          </div>
+
           <div className="relative group z-50">
             <button className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition-colors cursor-default">
               <span className="text-sm font-medium text-gray-600">
@@ -681,7 +831,6 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             Save to Google Drive
           </button>
 
-          {/* LOGOUT BUTTON */}
           <button
             onClick={handleLogout}
             className="bg-red-500 hover:bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm"

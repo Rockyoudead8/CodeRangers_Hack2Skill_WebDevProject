@@ -6,17 +6,28 @@ export interface Point {
 }
 
 export interface CanvasStroke {
-  id: string; // Unique ID like "user123-1234567890"
-  userId: string; // Who drew it
+  id: string;
+  userId: string;
   tool: "pencil" | "line" | "rect" | "circle" | "eraser";
-  points: Point[]; // Array of coordinates
-  color: string; // Like "#FF0000"
-  lineWidth: number; // Brush size
-  timestamp: number; // When it was created
-  vectorClock: Record<string, number>; // CRDT magic for conflict resolution
+  points: Point[];
+  color: string;
+  lineWidth: number;
+  timestamp: number;
+  vectorClock: Record<string, number>;
+}
+
+// NEW: Canvas dimension tracking
+export interface CanvasDimensions {
+  width: number;
+  height: number;
+  version: number;
+  lastModifiedBy: string;
+  lastModifiedAt: number;
+  vectorClock: Record<string, number>;
 }
 
 export interface CanvasState {
-  strokes: CanvasStroke[]; // All strokes in the canvas
-  deletedStrokeIds: Set<string>; // IDs of erased strokes
+  strokes: CanvasStroke[];
+  dimensions: CanvasDimensions; // NEW
+  deletedStrokeIds: Set<string>;
 }

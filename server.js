@@ -19,8 +19,8 @@ app.prepare().then(() => {
     cors: { origin: "*" },
   });
 
-  // Storage - SIMPLIFIED
-  const roomHistory = {}; // { roomId: { strokes: [] } }
+  // Storage
+  const roomHistory = {}; // { roomId: { strokes: [], dimensions: {...} } }
   const boardHistory = {};
   const imageHistory = {};
 
@@ -34,46 +34,62 @@ app.prepare().then(() => {
 
       const roomUsers = getUsers(roomId);
 
-      // 🔥 INITIALIZE - SIMPLIFIED
-      if (!roomHistory[roomId]) roomHistory[roomId] = { strokes: [] };
+      // Initialize room data
+      if (!roomHistory[roomId]) {
+        roomHistory[roomId] = {
+          strokes: [],
+          dimensions: {
+            width: 1920,
+            height: 1080,
+            version: 0,
+            lastModifiedBy: "system",
+            lastModifiedAt: Date.now(),
+            vectorClock: {},
+          },
+        };
+      }
       if (!boardHistory[roomId]) boardHistory[roomId] = [];
       if (!imageHistory[roomId]) imageHistory[roomId] = [];
 
       socket.emit("userIsJoined", { success: true, users: roomUsers });
       socket.broadcast.to(roomId).emit("allUsers", roomUsers);
 
-      // 🔥 SYNC EVERYTHING
+      // Sync everything including dimensions
       socket.emit("boards:sync", boardHistory[roomId]);
       socket.emit("images:sync", imageHistory[roomId]);
       socket.emit("canvas:sync", roomHistory[roomId].strokes);
+      socket.emit("canvas:dimensions:sync", roomHistory[roomId].dimensions);
 
       console.log(
         "userJoined",
         userId,
         roomId,
         "Strokes:",
-        roomHistory[roomId].strokes.length
+        roomHistory[roomId].strokes.length,
+        "Canvas:",
+        `${roomHistory[roomId].dimensions.width}x${roomHistory[roomId].dimensions.height}`
       );
     });
 
-    // 🔥 CANVAS STROKE - FIXED
+    // CANVAS STROKE
     socket.on("canvas:stroke", ({ roomId, stroke }) => {
-      if (!roomHistory[roomId]) roomHistory[roomId] = { strokes: [] };
+      if (!roomHistory[roomId])
+        roomHistory[roomId] = { strokes: [], dimensions: {} };
 
       roomHistory[roomId].strokes.push(stroke);
       console.log(
-        "📝 Stroke added. Room now has",
+        "🖊 Stroke added. Room now has",
         roomHistory[roomId].strokes.length,
         "strokes"
       );
 
-      // Broadcast to others
       socket.broadcast.to(roomId).emit("canvas:stroke", stroke);
     });
 
-    // 🔥 CANVAS CLEAR - FIXED
+    // CANVAS CLEAR
     socket.on("canvas:clear", ({ roomId }) => {
-      if (!roomHistory[roomId]) roomHistory[roomId] = { strokes: [] };
+      if (!roomHistory[roomId])
+        roomHistory[roomId] = { strokes: [], dimensions: {} };
 
       roomHistory[roomId].strokes = [];
       console.log("🗑️ Canvas cleared for room", roomId);
@@ -81,7 +97,7 @@ app.prepare().then(() => {
       io.to(roomId).emit("canvas:clear");
     });
 
-    // 🔥 CANVAS UNDO - FIXED
+    // CANVAS UNDO
     socket.on("canvas:undo", ({ roomId, strokeId }) => {
       if (!roomHistory[roomId]) return;
 
@@ -98,6 +114,37 @@ app.prepare().then(() => {
       io.to(roomId).emit("canvas:undo", strokeId);
     });
 
+    // NEW: CANVAS RESIZE
+    socket.on("canvas:resize", ({ roomId, dimensions }) => {
+      if (!roomHistory[roomId]) return;
+
+      const currentDimensions = roomHistory[roomId].dimensions;
+
+      // Apply Max-Merge strategy on server side
+      const mergedDimensions = {
+        width: Math.max(currentDimensions.width, dimensions.width),
+        height: Math.max(currentDimensions.height, dimensions.height),
+        version: Math.max(currentDimensions.version || 0, dimensions.version),
+        lastModifiedBy: dimensions.lastModifiedBy,
+        lastModifiedAt: Math.max(
+          currentDimensions.lastModifiedAt || 0,
+          dimensions.lastModifiedAt
+        ),
+        vectorClock: dimensions.vectorClock,
+      };
+
+      roomHistory[roomId].dimensions = mergedDimensions;
+
+      console.log(
+        "📐 Canvas resized for room",
+        roomId,
+        `${mergedDimensions.width}x${mergedDimensions.height}`
+      );
+
+      // Broadcast to all users including sender (to handle concurrent conflicts)
+      io.to(roomId).emit("canvas:resize", mergedDimensions);
+    });
+
     // BOARD EVENTS
     socket.on("board:add", ({ roomId, boardData }) => {
       if (!boardHistory[roomId]) boardHistory[roomId] = [];
@@ -105,13 +152,11 @@ app.prepare().then(() => {
       io.to(roomId).emit("board:add", boardData);
     });
 
-    // ADD BUFFER FOR OUT-OF-ORDER UPDATES
-    const boardUpdateBuffers = {}; // { roomId: { boardId: [updates] } }
+    const boardUpdateBuffers = {};
 
     socket.on("board:update", ({ roomId, boardData }) => {
       if (!boardHistory[roomId]) return;
 
-      // ✅ Initialize buffer
       if (!boardUpdateBuffers[roomId]) boardUpdateBuffers[roomId] = {};
       if (!boardUpdateBuffers[roomId][boardData.id]) {
         boardUpdateBuffers[roomId][boardData.id] = [];
@@ -120,17 +165,14 @@ app.prepare().then(() => {
       const buffer = boardUpdateBuffers[roomId][boardData.id];
       buffer.push(boardData);
 
-      // ✅ Sort by sequence number
       buffer.sort((a, b) => a.sequence - b.sequence);
 
-      // ✅ Apply updates in order
       const latestUpdate = buffer[buffer.length - 1];
 
       const index = boardHistory[roomId].findIndex(
         (b) => b.id === boardData.id
       );
       if (index !== -1) {
-        // Only apply if this is actually newer
         if (
           latestUpdate.sequence > (boardHistory[roomId][index].sequence || 0)
         ) {
@@ -139,7 +181,6 @@ app.prepare().then(() => {
         }
       }
 
-      // ✅ Clear buffer after 5 seconds
       setTimeout(() => {
         boardUpdateBuffers[roomId][boardData.id] = [];
       }, 5000);

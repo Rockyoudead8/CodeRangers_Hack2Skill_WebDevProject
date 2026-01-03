@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import type { BoardData } from "../types";
-import { CanvasStroke } from "../types/canvas";
+import { CanvasStroke, CanvasDimensions } from "../types/canvas";
 import type { CRDTManager } from "../utils/crdt";
 import { socket } from "@/app/lib/socket";
 
@@ -11,6 +11,7 @@ interface UseSyncProps {
   userEmail: string;
   crdtRef: React.RefObject<CRDTManager | null>;
   setCanvasStrokes: React.Dispatch<React.SetStateAction<CanvasStroke[]>>;
+  setCanvasDimensions: React.Dispatch<React.SetStateAction<CanvasDimensions>>; // NEW
   setUsers: React.Dispatch<React.SetStateAction<any[]>>;
   setBoards: React.Dispatch<React.SetStateAction<BoardData[]>>;
   setImages: React.Dispatch<React.SetStateAction<BoardData[]>>;
@@ -21,6 +22,7 @@ export const useSync = ({
   userEmail,
   crdtRef,
   setCanvasStrokes,
+  setCanvasDimensions,
   setUsers,
   setBoards,
   setImages,
@@ -40,10 +42,8 @@ export const useSync = ({
 
       console.log("📥 Received stroke from another user:", stroke.id);
 
-      // Update vector clock
       crdtRef.current.updateClock(stroke.vectorClock);
 
-      // Add to local strokes
       setCanvasStrokes((prev) => {
         if (prev.find((s) => s.id === stroke.id)) {
           return prev;
@@ -78,6 +78,35 @@ export const useSync = ({
     const handleCanvasClear = () => {
       console.log("🗑️ Canvas cleared by another user");
       setCanvasStrokes([]);
+    };
+
+    // NEW: Handle dimension sync and updates
+    const handleDimensionsSync = (dimensions: CanvasDimensions) => {
+      console.log("📥 Initial dimensions sync:", dimensions);
+      setCanvasDimensions(dimensions);
+
+      if (crdtRef.current) {
+        crdtRef.current.updateClock(dimensions.vectorClock);
+      }
+    };
+
+    const handleCanvasResize = (remoteDimensions: CanvasDimensions) => {
+      if (!crdtRef.current) return;
+
+      console.log("📥 Received canvas resize:", remoteDimensions);
+
+      crdtRef.current.updateClock(remoteDimensions.vectorClock);
+
+      setCanvasDimensions((currentDimensions) => {
+        // Resolve conflict using CRDT
+        const resolved = crdtRef.current!.resolveDimensionConflict(
+          currentDimensions,
+          remoteDimensions
+        );
+
+        console.log("📐 Resolved dimensions:", resolved);
+        return resolved;
+      });
     };
 
     // ===== USER LIST HANDLER =====
@@ -200,9 +229,7 @@ export const useSync = ({
 
     const handleBoardFocus = ({ boardId, userId }: any) => {
       if (userId !== userEmail) {
-        // Another user is editing this board
         console.log(`🔒 ${userId} is now editing board ${boardId}`);
-        // You could disable editing or show a warning
       }
     };
 
@@ -211,6 +238,8 @@ export const useSync = ({
     socket.on("canvas:stroke", handleCanvasStroke);
     socket.on("canvas:sync", handleCanvasSync);
     socket.on("canvas:clear", handleCanvasClear);
+    socket.on("canvas:dimensions:sync", handleDimensionsSync); // NEW
+    socket.on("canvas:resize", handleCanvasResize); // NEW
     socket.on("userIsJoined", handleUserList);
     socket.on("allUsers", handleUserList);
     socket.on("board:add", handleBoardAdd);
@@ -226,6 +255,8 @@ export const useSync = ({
       socket.off("canvas:stroke", handleCanvasStroke);
       socket.off("canvas:sync", handleCanvasSync);
       socket.off("canvas:clear", handleCanvasClear);
+      socket.off("canvas:dimensions:sync", handleDimensionsSync);
+      socket.off("canvas:resize", handleCanvasResize);
       socket.off("userIsJoined", handleUserList);
       socket.off("allUsers", handleUserList);
       socket.off("board:add", handleBoardAdd);

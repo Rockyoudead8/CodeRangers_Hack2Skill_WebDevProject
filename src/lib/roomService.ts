@@ -21,14 +21,30 @@ export function subscribeToBoard(
   });
 }
 
-// 🔥 FIXED: Use setDoc with merge instead of updateDoc
+// UPDATED: Now saves dimensions along with canvas/boards/images
 export async function saveBoard(roomId: string, data: any) {
   const ref = doc(db, "rooms", roomId);
 
   try {
-    // Use setDoc with merge: true to create if doesn't exist
-    await setDoc(ref, { boardData: data }, { merge: true });
-    console.log("✅ Saved to Firestore");
+    // Ensure dimensions are included
+    const dataToSave = {
+      boardData: {
+        canvas: data.canvas || [],
+        dimensions: data.dimensions || {
+          width: 1920,
+          height: 1080,
+          version: 0,
+          lastModifiedBy: "system",
+          lastModifiedAt: Date.now(),
+          vectorClock: {},
+        },
+        boards: data.boards || [],
+        images: data.images || [],
+      },
+    };
+
+    await setDoc(ref, dataToSave, { merge: true });
+    console.log("✅ Saved to Firestore (including dimensions)");
   } catch (err) {
     console.error("❌ Firestore save failed:", err);
     throw err;
@@ -49,7 +65,19 @@ export async function createRoom(roomId: string, user: any) {
     createdBy: user?.uid ?? "guest",
     createdAt: serverTimestamp(),
     participants: [],
-    boardData: null,
+    boardData: {
+      canvas: [],
+      dimensions: {
+        width: 1920,
+        height: 1080,
+        version: 0,
+        lastModifiedBy: user?.uid ?? "guest",
+        lastModifiedAt: Date.now(),
+        vectorClock: {},
+      },
+      boards: [],
+      images: [],
+    },
   });
 }
 

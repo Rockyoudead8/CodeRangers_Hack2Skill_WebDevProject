@@ -1,10 +1,11 @@
-// src/app/room/[roomId]/hooks/draw.ts
+// REPLACE useDraw hook in src/app/room/[roomId]/hooks/useDraw.ts
 
 import { Point } from "../types/canvas";
 import { socket } from "@/app/lib/socket";
 import { CRDTManager } from "../utils/crdt";
-import { CanvasStroke } from "../types/canvas";
+import { CanvasStroke, CanvasDimensions } from "../types/canvas";
 import { useEffect, useRef } from "react";
+import { BoardData } from "../types";
 
 interface DrawProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -14,7 +15,13 @@ interface DrawProps {
   crdtRef: React.RefObject<CRDTManager | null>;
   setCanvasStrokes: React.Dispatch<React.SetStateAction<CanvasStroke[]>>;
   roomId: string;
-  saveThrottled: () => void;
+  saveThrottled: (
+    currentCanvasStrokes?: CanvasStroke[],
+    currentBoards?: BoardData[],
+    currentImages?: BoardData[],
+    currentDimensions?: CanvasDimensions // 🔥 ADD THIS PARAM
+  ) => void;
+  canvasDimensions: CanvasDimensions; // 🔥 ADD THIS PROP
 }
 
 export const useDraw = ({
@@ -26,13 +33,12 @@ export const useDraw = ({
   setCanvasStrokes,
   roomId,
   saveThrottled,
+  canvasDimensions, // 🔥 USE THIS
 }: DrawProps) => {
-  // Create refs for values that change frequently
   const selectedToolRef = useRef(selectedTool);
   const selectedColorRef = useRef(selectedColor);
   const brushSizeRef = useRef(brushSize);
 
-  // Update refs when values change
   useEffect(() => {
     selectedToolRef.current = selectedTool;
   }, [selectedTool]);
@@ -52,7 +58,6 @@ export const useDraw = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Local drawing state
     let isCurrentlyDrawing = false;
     let tempStrokePoints: Point[] = [];
     let localStartX = 0;
@@ -87,12 +92,10 @@ export const useDraw = ({
 
       tempStrokePoints.push({ x, y });
 
-      // Get current values from refs
       const tool = selectedToolRef.current;
       const color = selectedColorRef.current;
       const size = brushSizeRef.current;
 
-      // For shapes, restore canvas to show preview
       if (["line", "rect", "circle"].includes(tool) && localImageData) {
         ctx.putImageData(localImageData, 0, 0);
       }
@@ -146,7 +149,6 @@ export const useDraw = ({
 
       const tool = selectedToolRef.current;
 
-      // For shapes, only need start/end points
       if (["line", "rect", "circle"].includes(tool)) {
         strokePoints = [
           { x: localStartX, y: localStartY },
@@ -154,7 +156,6 @@ export const useDraw = ({
         ];
       }
 
-      // Create CRDT stroke
       const newStroke = crdtRef.current.createStroke({
         tool: tool as any,
         points: strokePoints,
@@ -162,16 +163,13 @@ export const useDraw = ({
         lineWidth: brushSizeRef.current,
       });
 
-      // Add to local state
       setCanvasStrokes((prev) => [...prev, newStroke]);
 
-      // Emit to others
       socket.emit("canvas:stroke", { roomId, stroke: newStroke });
 
-      // Save to Firestore (throttled)
-      saveThrottled();
+      // 🔥 FIX: Pass canvasDimensions to saveThrottled
+      saveThrottled(undefined, undefined, undefined, canvasDimensions);
 
-      // Reset
       tempStrokePoints = [];
       ctx.beginPath();
     };
@@ -189,5 +187,12 @@ export const useDraw = ({
       canvas.removeEventListener("mouseup", handleMouseUp);
       canvas.removeEventListener("mouseleave", handleMouseLeave);
     };
-  }, [canvasRef, crdtRef, roomId, saveThrottled, setCanvasStrokes]);
+  }, [
+    canvasRef,
+    crdtRef,
+    roomId,
+    saveThrottled,
+    setCanvasStrokes,
+    canvasDimensions,
+  ]); // 🔥 ADD canvasDimensions
 };
