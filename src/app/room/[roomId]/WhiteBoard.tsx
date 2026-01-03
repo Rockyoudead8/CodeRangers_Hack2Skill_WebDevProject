@@ -736,34 +736,35 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         className="hidden"
       />
 
-      {/* HEADER */}
-      <header className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm z-70 shrink-0">
+      {/* HEADER - Responsive with icons on small screens */}
+      <header className="sticky top-0 w-full bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between shadow-sm z-50 shrink-0">
+        {/* Left: Title */}
         <div className="flex flex-col">
-          <h1 className="text-lg font-semibold text-gray-900 tracking-tight flex items-center gap-2">
+          <h1 className="text-base sm:text-lg font-semibold text-gray-900 tracking-tight">
             Whiteboard
           </h1>
-          <div className="flex items-center gap-2 text-xs text-gray-500">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
             <span>Room:</span>
-            <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-mono">
+            <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-mono text-[10px] sm:text-xs">
               {roomId}
             </code>
-            {/* NEW: Display current canvas size */}
             <span className="ml-2 text-blue-600 font-medium">
               {canvasDimensions.width}×{canvasDimensions.height}px
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* NEW: Canvas Resize Controls */}
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+        {/* Right: Action Buttons */}
+        <div className="flex items-center gap-1 sm:gap-2 md:gap-4">
+          {/* Canvas Resize Controls - Hidden on mobile */}
+          <div className="hidden lg:flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
             <input
               type="number"
               value={expandAmount || ""}
               onChange={(e) => setExpandAmount(Number(e.target.value))}
               placeholder="Amount"
               min="1"
-              className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-16 xl:w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
 
             <select
@@ -771,30 +772,48 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
               onChange={(e) =>
                 setExpandDirection(e.target.value as "horizontal" | "vertical")
               }
-              className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-2 py-1 text-xs xl:text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="horizontal">Horizontal</option>
-              <option value="vertical">Vertical</option>
+              <option value="horizontal">H</option>
+              <option value="vertical">V</option>
             </select>
 
             <button
               onClick={handleExpandCanvas}
               disabled={!expandAmount || expandAmount <= 0}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition-colors"
+              className="px-2 xl:px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-xs xl:text-sm font-medium rounded transition-colors"
             >
               Expand
             </button>
           </div>
 
-          <div className="relative group z-50">
-            <button className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition-colors cursor-default">
-              <span className="text-sm font-medium text-gray-600">
-                {users.length} Online
+          {/* Users Online */}
+          <div className="relative group">
+            <button className="flex items-center gap-1 sm:gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-2 sm:px-3 py-1.5 rounded-full transition-colors cursor-default">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-gray-600"
+              >
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              <span className="text-xs sm:text-sm font-medium text-gray-600">
+                {users.length}
               </span>
             </button>
-            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 p-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 p-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
               <p className="text-xs font-semibold text-gray-400 px-2 py-1 uppercase">
-                Current Users
+                Online Users
               </p>
               <ul className="flex flex-col gap-1 overflow-y-auto max-h-40">
                 {users.map((user, i) => (
@@ -802,7 +821,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                     key={i}
                     className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg transition-colors"
                   >
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold bg-blue-500 overflow-hidden">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold bg-blue-500">
                       {user.id ? user.id.charAt(0).toUpperCase() : "?"}
                     </div>
                     <span
@@ -817,25 +836,82 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             </div>
           </div>
 
+          {/* Add Board Button */}
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-gray-900 hover:bg-black text-white text-sm font-medium px-4 py-2 rounded-lg"
+            className="flex items-center gap-1 sm:gap-2 bg-gray-900 hover:bg-black text-white px-2 sm:px-4 py-2 rounded-lg transition-colors"
+            title="Add Board"
           >
-            Add Board
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span className="hidden md:inline text-xs lg:text-sm font-medium">
+              Add Board
+            </span>
           </button>
 
+          {/* Save to Google Drive */}
           <button
             onClick={handleSaveToDrive}
-            className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm"
+            className="flex items-center gap-1 sm:gap-2 bg-green-600 hover:bg-green-700 text-white px-2 sm:px-4 py-2 rounded-lg transition-colors shadow-sm"
+            title="Save to Google Drive"
           >
-            Save to Google Drive
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+              <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+              <path d="M12 18v-6" />
+              <path d="m9 15 3 3 3-3" />
+            </svg>
+            <span className="hidden lg:inline text-xs xl:text-sm font-medium">
+              Save to Drive
+            </span>
           </button>
 
+          {/* Logout Button */}
           <button
             onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm"
+            className="flex items-center gap-1 sm:gap-2 bg-red-500 hover:bg-red-600 text-white px-2 sm:px-4 py-2 rounded-lg transition-colors shadow-sm"
+            title="Logout"
           >
-            Logout
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span className="hidden md:inline text-xs lg:text-sm font-medium">
+              Logout
+            </span>
           </button>
         </div>
       </header>
@@ -922,7 +998,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                     canvasStrokes,
                     isLoadingFromFirestore,
                     saveTimeout,
-                    lastSave
+                    lastSave,
+                    canvasDimensions
                   )
                 }
                 onRename={(newName) =>
@@ -964,7 +1041,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                     canvasStrokes,
                     isLoadingFromFirestore,
                     saveTimeout,
-                    lastSave
+                    lastSave,
+                    canvasDimensions
                   )
                 }
                 onRename={(newName) => updateItemName(img.id, newName, "image")}
@@ -1021,7 +1099,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             flex gap-5 transition-all duration-300 ease-in-out
             
             /* MOBILE STYLES */
-            bottom-6 left-1/2 -translate-x-1/2 rounded-full flex-row items-center
+            bottom-6 left-1/2 -translate-x-1/2 rounded-full flex-row items-center overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent max-w-[450px]
             ${
               isToolbarVisible
                 ? "translate-y-0 opacity-100"
@@ -1029,7 +1107,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             }
 
             /* DESKTOP STYLES */
-            md:top-[60%] md:left-4 md:bottom-auto md:translate-x-0 md:-translate-y-1/2 md:rounded-2xl md:flex-col md:items-start
+            md:top-[53%] md:left-4 md:bottom-auto md:translate-x-0 md:-translate-y-1/2 md:rounded-2xl md:flex-col md:items-start md:overflow-y-auto md:overflow-x-hidden md:h-[450px] md:max-w-none
             md:${
               isToolbarVisible ? "md:translate-x-0" : "md:-translate-x-[150%]"
             }

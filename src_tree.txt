@@ -11,6 +11,17 @@
  ┃ ┃ ┗ 📜page.tsx
  ┃ ┣ 📂room
  ┃ ┃ ┗ 📂[roomId]
+ ┃ ┃ ┃ ┣ 📂components
+ ┃ ┃ ┃ ┃ ┗ 📜image.ts
+ ┃ ┃ ┃ ┣ 📂hooks
+ ┃ ┃ ┃ ┃ ┣ 📜renderAllStrokes.ts
+ ┃ ┃ ┃ ┃ ┣ 📜useDraw.ts
+ ┃ ┃ ┃ ┃ ┗ 📜useSync.ts
+ ┃ ┃ ┃ ┣ 📂types
+ ┃ ┃ ┃ ┃ ┣ 📜canvas.ts
+ ┃ ┃ ┃ ┃ ┗ 📜index.ts
+ ┃ ┃ ┃ ┣ 📂utils
+ ┃ ┃ ┃ ┃ ┗ 📜crdt.ts
  ┃ ┃ ┃ ┣ 📜Board.tsx
  ┃ ┃ ┃ ┣ 📜IBoard.tsx
  ┃ ┃ ┃ ┣ 📜layout.tsx
@@ -30,6 +41,7 @@
  ┣ 📂helpers
  ┃ ┗ 📜mailer.ts
  ┣ 📂hooks
+ ┃ ┣ 📜useInfiniteCanvas.ts
  ┃ ┗ 📜useUser.ts
  ┣ 📂lib
  ┃ ┣ 📜firebase.ts

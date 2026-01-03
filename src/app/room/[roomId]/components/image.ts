@@ -1,6 +1,6 @@
 import { CRDTManager } from "../utils/crdt";
 import { BoardData, type Position } from "../types";
-import { CanvasStroke } from "../types/canvas";
+import { CanvasStroke, CanvasDimensions } from "../types/canvas";
 import { saveBoard } from "@/lib/roomService";
 import { socket } from "@/app/lib/socket";
 export const resizeImage = (file: File): Promise<string> => {
@@ -172,6 +172,7 @@ export const checkForOverlap = (
   });
 };
 
+// 🔥 UPDATED: Add canvasDimensions parameter
 const updateItemPosition = (
   id: number | string,
   newPosition: Position,
@@ -185,29 +186,36 @@ const updateItemPosition = (
   canvasStrokes: CanvasStroke[],
   isLoadingFromFirestore: React.RefObject<boolean>,
   saveTimeout: NodeJS.Timeout | null,
-  lastSave: number
+  lastSave: number,
+  canvasDimensions: CanvasDimensions // 🔥 NEW PARAMETER
 ) => {
   if (!crdtRef.current) {
     console.error("❌ CRDT Manager not initialized");
     return;
   }
 
+  // 🔥 VALIDATE: Ensure position is within canvas bounds
+  const validatedPosition = {
+    x: Math.max(0, Math.min(newPosition.x, canvasDimensions.width)),
+    y: Math.max(0, Math.min(newPosition.y, canvasDimensions.height)),
+  };
+
   if (type === "text") {
     const board = boards.find((b) => b.id === id);
     if (board) {
       const updated = crdtRef.current.createOperation({
         ...board,
-        position: newPosition,
+        position: validatedPosition, // Use validated position
       });
 
-      console.log("🔄 Updating board position with CRDT:", {
+      console.log("🔄 Updating board position:", {
         id: updated.id,
+        position: validatedPosition,
         version: updated.version,
       });
 
       setBoards((prev) => {
         const updatedBoards = prev.map((b) => (b.id === id ? updated : b));
-        // 🔥 Save with NEW state
         saveThrottled(
           canvasStrokes,
           updatedBoards,
@@ -227,17 +235,17 @@ const updateItemPosition = (
     if (img) {
       const updated = crdtRef.current.createOperation({
         ...img,
-        position: newPosition,
+        position: validatedPosition, // Use validated position
       });
 
-      console.log("🔄 Updating image position with CRDT:", {
+      console.log("🔄 Updating image position:", {
         id: updated.id,
+        position: validatedPosition,
         version: updated.version,
       });
 
       setImages((prev) => {
         const updatedImages = prev.map((i) => (i.id === id ? updated : i));
-        // 🔥 Save with NEW state
         saveThrottled(
           canvasStrokes,
           boards,
@@ -269,7 +277,8 @@ export const handleDragStart = (
   canvasStrokes: CanvasStroke[],
   isLoadingFromFirestore: React.RefObject<boolean>,
   saveTimeout: NodeJS.Timeout | null,
-  lastSave: number
+  lastSave: number,
+  canvasDimensions: CanvasDimensions // 🔥 ADD THIS PARAMETER
 ) => {
   e.preventDefault();
   const { id } = item;
@@ -279,33 +288,60 @@ export const handleDragStart = (
 
   const itemRect = itemRef.getBoundingClientRect();
   const containerRect = container.getBoundingClientRect();
+
+  // Calculate offset from mouse to item's top-left corner
   const offsetX = e.clientX - itemRect.left;
   const offsetY = e.clientY - itemRect.top;
+
   const startPos = item.position;
 
   const handleMouseMove = (e: MouseEvent) => {
-    const newX = e.clientX - offsetX - containerRect.left;
-    let newY = e.clientY - offsetY - containerRect.top;
-    if (newY < 0) newY = 0;
+    // 🔥 FIX: Add scroll offsets to convert viewport coords to canvas coords
+    const newX =
+      e.clientX - offsetX - containerRect.left + container.scrollLeft;
+    let newY = e.clientY - offsetY - containerRect.top + container.scrollTop;
 
-    itemRef.style.left = `${newX}px`;
-    itemRef.style.top = `${newY}px`;
+    // 🔥 FIX: Bounds checking - prevent dragging outside canvas
+    const maxX = canvasDimensions.width - itemRect.width;
+    const maxY = canvasDimensions.height - itemRect.height;
+
+    // Clamp to valid range
+    const clampedX = Math.max(0, Math.min(newX, maxX));
+    const clampedY = Math.max(0, Math.min(newY, maxY));
+
+    // Update visual position (still use absolute positioning)
+    itemRef.style.left = `${clampedX}px`;
+    itemRef.style.top = `${clampedY}px`;
   };
 
   const handleMouseUp = () => {
     document.removeEventListener("mousemove", handleMouseMove);
     document.removeEventListener("mouseup", handleMouseUp);
 
+    // 🔥 FIX: Calculate final position relative to canvas origin
     const finalRect = itemRef.getBoundingClientRect();
+
+    // Convert viewport coordinates to canvas coordinates
     const newPosition = {
-      x: finalRect.left - containerRect.left,
-      y: finalRect.top - containerRect.top,
+      x: finalRect.left - containerRect.left + container.scrollLeft,
+      y: finalRect.top - containerRect.top + container.scrollTop,
     };
 
+    // Bounds check for final position
+    const maxX = canvasDimensions.width - finalRect.width;
+    const maxY = canvasDimensions.height - finalRect.height;
+
+    newPosition.x = Math.max(0, Math.min(newPosition.x, maxX));
+    newPosition.y = Math.max(0, Math.min(newPosition.y, maxY));
+
+    // Check for overlap with other items
     if (checkForOverlap(id, itemRefs, boards, images)) {
+      // Revert to start position if overlap detected
       itemRef.style.left = `${startPos.x}px`;
       itemRef.style.top = `${startPos.y}px`;
+      console.log("⚠️ Overlap detected, reverting to original position");
     } else {
+      // Update item position with new coordinates
       updateItemPosition(
         id,
         newPosition,
@@ -319,10 +355,12 @@ export const handleDragStart = (
         canvasStrokes,
         isLoadingFromFirestore,
         saveTimeout,
-        lastSave
+        lastSave,
+        canvasDimensions // 🔥 Pass dimensions for validation
       );
     }
   };
+
   document.addEventListener("mousemove", handleMouseMove);
   document.addEventListener("mouseup", handleMouseUp);
 };
