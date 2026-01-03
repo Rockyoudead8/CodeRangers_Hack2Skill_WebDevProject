@@ -302,7 +302,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       socket.disconnect();
       await signOut(auth);
       localStorage.removeItem("drive_token"); // optional cleanup
-      router.push("/login");
+      router.push("/");
     } catch (error) {
       console.error("Logout failed", error);
       alert("Logout failed. Life remains disappointing.");

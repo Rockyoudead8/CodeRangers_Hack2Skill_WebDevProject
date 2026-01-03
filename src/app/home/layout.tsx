@@ -1,10 +1,11 @@
-//src\app\home\layout.tsx
+//src/app/home/layout.tsx
 
 "use client";
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import toast from "react-hot-toast";
 
 export default function HomeLayout({
@@ -16,11 +17,16 @@ export default function HomeLayout({
 
   const handleLogout = async () => {
     try {
-      await axios.get("/api/users/logout");
+      // Use Firebase signOut instead of calling non-existent API
+      await signOut(auth);
+
+      // Optional: Clear any local storage tokens
+      localStorage.removeItem("drive_token");
+
       toast.success("Logout successful");
-      router.push("/login");
+      router.push("/");
     } catch (error: any) {
-      console.error("Logout failed", error.message);
+      console.error("Logout failed", error);
       toast.error(error.message || "Logout failed");
     }
   };
