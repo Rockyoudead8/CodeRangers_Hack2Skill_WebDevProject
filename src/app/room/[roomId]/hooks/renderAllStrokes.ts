@@ -1,3 +1,4 @@
+// src/app/room/[roomId]/hooks/renderAllStrokes.ts
 import { CanvasStroke, Point } from "../types/canvas";
 
 interface renderAllStrokesProps {

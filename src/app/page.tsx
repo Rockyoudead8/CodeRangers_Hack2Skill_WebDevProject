@@ -61,7 +61,7 @@ export default function LandingPage() {
     }
   };
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-950 text-white">
+    <div className="min-h-screen bg-linear-to-br from-gray-900 via-black to-gray-950 text-white">
       {/* Navbar */}
       <div className="w-full flex justify-between items-center px-8 py-6 border-b border-gray-800">
         <h1 className="text-2xl font-extrabold tracking-wide text-blue-400">

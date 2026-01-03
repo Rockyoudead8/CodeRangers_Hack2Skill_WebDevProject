@@ -1,0 +1,198 @@
+Collaborative Whiteboard Application - Technical Overview
+Project Architecture & Purpose
+This is a real-time collaborative whiteboard application built with Next.js 14+, Socket.IO, Firebase (Authentication & Firestore), and a custom CRDT (Conflict-free Replicated Data Type) implementation for managing distributed state across multiple users.
+
+Core Technologies Stack
+
+Frontend: Next.js 14 (App Router), React 19, TypeScript
+Real-time Communication: Socket.IO (WebSocket-based)
+Backend: Custom Node.js server (server.js) integrated with Next.js
+Database: Firebase Firestore (persistence layer)
+Authentication: Firebase Auth (Google OAuth + Email/Password)
+State Management: Custom CRDT implementation for conflict resolution
+Canvas Drawing: HTML5 Canvas API with stroke-based rendering
+Rich Text Editing: TipTap editor for collaborative text boards
+
+
+Application Flow & Key Features
+1. Authentication System (src/app/login/)
+
+Google OAuth: Users can sign in with Google, requesting Drive API scopes for future "Save to Drive" functionality
+Email/Password: Traditional authentication with password reset via Firebase
+Session Management: Firebase Auth handles tokens; useUser hook manages auth state globally
+
+2. Room Management (src/app/home/)
+
+Users can create a new room (generates a 20-character unique code)
+Users can join an existing room by entering a code
+Navigation to /room/[roomId] triggers socket connection and Firestore sync
+
+3. Real-Time Collaboration (src/app/room/[roomId]/)
+Socket.IO Events (Defined in server.js):
+javascript// User Management
+- userJoined → Broadcasts user list, syncs room state
+- disconnect → Removes user from room
+
+// Canvas Operations
+- canvas:stroke → Broadcasts new drawing strokes
+- canvas:undo → Removes specific stroke by ID
+- canvas:clear → Clears entire canvas for all users
+
+// Text Board Operations
+- board:add → Creates new text/sticky note
+- board:update → Updates board content/position/name
+- board:delete → Removes board
+
+// Image Board Operations
+- image:add → Uploads and broadcasts image
+- image:update → Updates image position/name
+- image:delete → Removes image
+CRDT Conflict Resolution (src/app/room/[roomId]/utils/crdt.ts):
+
+Vector Clocks: Each operation carries a timestamp and logical clock per user
+Causal Ordering: Operations are ordered by "happens-before" relationship
+Last-Write-Wins (LWW): For concurrent updates, the operation with the latest timestamp wins
+Text Merging: Special handling for TipTap HTML content to preserve user edits during concurrent updates
+
+Canvas Architecture (Stroke-Based):
+
+Old Approach (commented out): Canvas was saved as a base64 PNG, causing sync issues
+New Approach: Canvas stores an array of strokes (CanvasStroke[]), where each stroke contains:
+
+id: Unique identifier (userId-timestamp-random)
+tool: pencil | line | rect | circle | eraser
+points: Array of {x, y} coordinates
+color, lineWidth, timestamp, vectorClock
+
+
+Rendering: renderAllStrokes function redraws all strokes on every update
+
+
+State Synchronization Strategy
+Three-Layer Sync:
+
+Socket.IO (Real-time): Broadcasts changes to connected users in the same room
+Firestore (Persistence): Saves board state every 2 seconds (throttled)
+CRDT (Conflict Resolution): Merges concurrent edits without data loss
+
+Key Challenge Solved:
+
+Problem: Firestore updates were overwriting local canvas strokes during active drawing
+Solution:
+
+isLoadingFromFirestore flag prevents saves during Firestore sync
+saveThrottled function accepts current state as arguments (avoids stale closure issues)
+Canvas strokes are compared by length; only newer data is accepted
+
+
+
+
+File Structure Breakdown
+Authentication & Routing
+
+src/app/login/page.tsx: Google OAuth with Drive scope
+src/app/login/email/page.tsx: Email/password auth
+src/hooks/useUser.ts: Firebase auth state listener
+
+Room Components
+
+src/app/room/[roomId]/WhiteBoard.tsx: Main whiteboard component (manages canvas, boards, images)
+src/app/room/[roomId]/Board.tsx: TipTap-powered text editor (supports bold/italic/underline, font family, size)
+src/app/room/[roomId]/IBoard.tsx: Image display component with drag/rename/delete
+
+Core Hooks
+
+src/app/room/[roomId]/hooks/useDraw.ts: Handles canvas drawing events (mousedown/move/up)
+src/app/room/[roomId]/hooks/useSync.ts: Socket.IO event listeners for all real-time updates
+src/app/room/[roomId]/hooks/renderAllStrokes.ts: Redraws canvas from stroke array
+
+CRDT Implementation
+
+src/app/room/[roomId]/utils/crdt.ts:
+
+CRDTManager class: Manages vector clocks, conflict resolution
+createOperation: Attaches CRDT metadata (version, vectorClock, timestamp)
+resolveConflict: Compares two concurrent operations, returns winner
+mergeBoards: Merges local and remote board arrays
+
+
+
+Firebase Integration
+
+src/lib/firebase.ts: Firebase app initialization
+src/lib/roomService.ts:
+
+saveBoard(roomId, data): Saves board state to Firestore
+subscribeToBoard(roomId, callback): Real-time Firestore listener
+createRoom(roomId, user): Initializes Firestore document for new room
+
+
+
+
+Critical Bug Fixes & Optimizations
+1. Canvas Sync Issue (SOLVED)
+
+Original Problem: Canvas was cleared/overwritten during Firestore updates
+Fix:
+
+Store strokes as an array, not base64 images
+Use useEffect callback form to compare current vs incoming state
+Skip Firestore updates if local strokes are more recent
+
+
+
+2. Board Update Buffering (In server.js)
+
+Problem: Out-of-order updates caused flickering
+Fix: Buffer updates per board, sort by sequence number, apply only newer updates
+
+3. TipTap Focus/Blur Handling (In Board.tsx)
+
+Problem: Remote updates were changing content while user was typing
+Fix:
+
+Skip remote updates if editor is focused (editor.isFocused)
+Emit board:focus and board:unfocus events to coordinate editing
+
+
+
+4. Debounced Board Content Updates
+
+Problem: Every keystroke triggered a socket emit + Firestore save
+Fix: Debounce updates by 500ms (stored in debouncedBoardUpdates ref)
+
+
+Known Issues & Future Improvements
+Current Limitations:
+
+No Redo Functionality: Undo works, but redo is not implemented for stroke-based canvas
+No User Cursors: Other users' cursor positions are not shown
+No Board Locking: Multiple users can edit the same board simultaneously (causes conflicts)
+Fixed Canvas Size: Canvas is set to 3000x2000px (no dynamic expansion)
+
+Potential Enhancements:
+
+Implement Y.js or Automerge for more robust CRDT (current implementation is custom/simplified)
+Add operational transformation for TipTap content (better than current HTML merging)
+Implement peer-to-peer WebRTC for lower latency (reduce Socket.IO server load)
+Add version history/snapshots (like Google Docs)
+Implement board permissions (owner/editor/viewer roles)
+
+
+Environment Variables Required
+env# Firebase Config (from firebase.ts)
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSy...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+# ... (other Firebase keys)
+
+# Mailer (for email verification, not actively used)
+MAILTRAP_SMTP_HOST=...
+MAILTRAP_SMTP_PORT=...
+MAILTRAP_SMTP_USER=...
+MAILTRAP_SMTP_PASS=...
+
+Running the Project
+bashnpm install
+npm run dev  # Starts custom Next.js + Socket.IO server on port 3000
+Note: The project uses a custom server (server.js) instead of Next.js's default server, which integrates Socket.IO for real-time features.
