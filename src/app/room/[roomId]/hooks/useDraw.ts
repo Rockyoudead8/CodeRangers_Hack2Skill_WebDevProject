@@ -22,8 +22,8 @@ interface DrawProps {
     currentDimensions?: CanvasDimensions // 🔥 ADD THIS PARAM
   ) => void;
   canvasDimensions: CanvasDimensions; // 🔥 ADD THIS PROP
+  isReadOnly: boolean; // 🔥 NEW PROP
 }
-
 export const useDraw = ({
   canvasRef,
   selectedTool,
@@ -34,6 +34,7 @@ export const useDraw = ({
   roomId,
   saveThrottled,
   canvasDimensions, // 🔥 USE THIS
+  isReadOnly, // 🔥 NEW PROP
 }: DrawProps) => {
   const selectedToolRef = useRef(selectedTool);
   const selectedColorRef = useRef(selectedColor);
@@ -65,6 +66,10 @@ export const useDraw = ({
     let localImageData: ImageData | null = null;
 
     const handleMouseDown = (e: MouseEvent) => {
+      if (isReadOnly) {
+        console.log("🚫 Drawing blocked (viewer mode)");
+        return;
+      }
       isCurrentlyDrawing = true;
 
       const rect = canvas.getBoundingClientRect();
@@ -194,5 +199,6 @@ export const useDraw = ({
     saveThrottled,
     setCanvasStrokes,
     canvasDimensions,
+    isReadOnly, // 🔥 NEW PROP
   ]); // 🔥 ADD canvasDimensions
 };

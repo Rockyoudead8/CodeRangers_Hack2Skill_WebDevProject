@@ -34,9 +34,18 @@ import { useSync } from "./hooks/useSync";
 interface WhiteboardProps {
   roomId: string;
   userEmail: string;
+  userRole: "admin" | "viewer"; // NEW
+  onUpgradeToAdmin: () => void; // NEW
 }
 
-export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
+export default function Whiteboard({
+  roomId,
+  userEmail,
+  userRole,
+  onUpgradeToAdmin,
+}: WhiteboardProps) {
+  // At the top of component
+  const isReadOnly = userRole === "viewer";
   const router = useRouter();
 
   const isLoadingFromFirestore = useRef(false);
@@ -321,7 +330,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
         const roomData = await getRoom(roomId);
 
         if (roomData?.boardData) {
-          console.log("📥 Loading initial data from Firestore");
+          console.log("🔥 Loading initial data from Firestore");
           loadBoardFromData(roomData.boardData);
         }
       } catch (err) {
@@ -335,9 +344,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     const unsubscribe = subscribeToBoard(roomId, (data) => {
       if (!data) return;
 
-      console.log("📥 Firestore update received");
+      console.log("🔥 Firestore update received");
 
-      // Only load if not currently saving
       if (!isLoadingFromFirestore.current) {
         loadBoardFromData(data);
       }
@@ -347,6 +355,22 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       if (unsubscribe) unsubscribe();
     };
   }, [roomId]);
+
+  // 🔥 NEW: Emit role when joining
+  useEffect(() => {
+    if (!socket.connected) socket.connect();
+
+    console.log(`🔐 Joining room ${roomId} as ${userRole}`);
+    socket.emit("userJoined", {
+      userId: userEmail,
+      roomId,
+      role: userRole, // Pass role to server
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [roomId, userEmail, userRole]);
 
   useSync({
     roomId,
@@ -394,6 +418,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   };
 
   const undo = () => {
+    if (isReadOnly) return; // 🔥 BLOCK
     setCanvasStrokes((prev) => {
       if (prev.length === 0) return prev;
       const newStrokes = prev.slice(0, -1); // Remove last stroke
@@ -407,11 +432,13 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   };
 
   const redo = () => {
+    if (isReadOnly) return; // 🔥 BLOCK
     // TODO: Implement proper redo with deleted strokes tracking
     console.log("Redo not yet implemented for stroke-based canvas");
   };
 
   const clearCanvas = () => {
+    if (isReadOnly) return; // 🔥 BLOCK
     setCanvasStrokes([]);
     socket.emit("canvas:clear", { roomId });
     saveThrottled([], boards, images, canvasDimensions);
@@ -427,6 +454,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     roomId,
     saveThrottled,
     canvasDimensions,
+    isReadOnly, // 🔥 NEW PROP
   });
 
   // Add this near your other useEffects
@@ -440,6 +468,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
   // Around line 800 - REPLACE handleAddBoard
   const handleAddBoard = () => {
+    if (isReadOnly) return; // 🔥 BLOCK
     if (!newBoardTitle.trim()) return;
     if (!crdtRef.current) {
       console.error("❌ CRDT Manager not initialized");
@@ -480,6 +509,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     newName: string,
     type: "text" | "image"
   ) => {
+    if (isReadOnly) return; // 🔥 BLOCK
     if (!crdtRef.current) return;
 
     if (type === "text") {
@@ -548,6 +578,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   );
 
   const updateBoardContent = (id: number | string, newContent: string) => {
+    if (isReadOnly) return; // 🔥 BLOCK
     if (!crdtRef.current) return;
 
     const board = boards.find((b) => b.id === id);
@@ -600,6 +631,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
   // Around line 1100 - REPLACE emitDeleteItem
   const emitDeleteItem = (id: number | string, type: "text" | "image") => {
+    if (isReadOnly) return; // 🔥 BLOCK
     if (type === "text") {
       socket.emit("board:delete", { roomId, boardId: id });
       setBoards((prev) => {
@@ -644,6 +676,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   // REPLACE handleExpandCanvas in WhiteBoard.tsx (around line 850)
 
   const handleExpandCanvas = () => {
+    if (isReadOnly) return; // 🔥 BLOCK
     if (!expandAmount || expandAmount <= 0) {
       alert("Please enter a valid amount (positive number)");
       return;
@@ -752,41 +785,99 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             <span className="ml-2 text-blue-600 font-medium">
               {canvasDimensions.width}×{canvasDimensions.height}px
             </span>
+
+            {/* 🔥 NEW: Role Badge */}
+            <button
+              onClick={userRole === "viewer" ? onUpgradeToAdmin : undefined}
+              className={`ml-2 px-2 py-1 rounded-full text-xs font-semibold transition-all ${
+                userRole === "admin"
+                  ? "bg-green-100 text-green-700 cursor-default"
+                  : "bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer hover:scale-105"
+              }`}
+              title={
+                userRole === "viewer"
+                  ? "Click to enter admin key"
+                  : "Full access"
+              }
+            >
+              {userRole === "admin" ? (
+                <>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="inline mr-1"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Admin Access
+                </>
+              ) : (
+                <>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="inline mr-1"
+                  >
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  Restricted Access
+                </>
+              )}
+            </button>
           </div>
         </div>
 
         {/* Right: Action Buttons */}
         <div className="flex items-center gap-1 sm:gap-2 md:gap-4">
-          {/* Canvas Resize Controls - Hidden on mobile */}
-          <div className="hidden lg:flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-            <input
-              type="number"
-              value={expandAmount || ""}
-              onChange={(e) => setExpandAmount(Number(e.target.value))}
-              placeholder="Amount"
-              min="1"
-              className="w-16 xl:w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          {/* Canvas Resize Controls - 🔥 Hidden for viewers */}
+          {!isReadOnly && (
+            <div className="hidden lg:flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+              <input
+                type="number"
+                value={expandAmount || ""}
+                onChange={(e) => setExpandAmount(Number(e.target.value))}
+                placeholder="Amount"
+                min="1"
+                className="w-16 xl:w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
 
-            <select
-              value={expandDirection}
-              onChange={(e) =>
-                setExpandDirection(e.target.value as "horizontal" | "vertical")
-              }
-              className="px-2 py-1 text-xs xl:text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="horizontal">H</option>
-              <option value="vertical">V</option>
-            </select>
+              <select
+                value={expandDirection}
+                onChange={(e) =>
+                  setExpandDirection(
+                    e.target.value as "horizontal" | "vertical"
+                  )
+                }
+                className="px-2 py-1 text-xs xl:text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="horizontal">H</option>
+                <option value="vertical">V</option>
+              </select>
 
-            <button
-              onClick={handleExpandCanvas}
-              disabled={!expandAmount || expandAmount <= 0}
-              className="px-2 xl:px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-xs xl:text-sm font-medium rounded transition-colors"
-            >
-              Expand
-            </button>
-          </div>
+              <button
+                onClick={handleExpandCanvas}
+                disabled={!expandAmount || expandAmount <= 0}
+                className="px-2 xl:px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-xs xl:text-sm font-medium rounded transition-colors"
+              >
+                Expand
+              </button>
+            </div>
+          )}
 
           {/* Users Online */}
           <div className="relative group">
@@ -825,69 +916,87 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                     <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold bg-blue-500">
                       {user.id ? user.id.charAt(0).toUpperCase() : "?"}
                     </div>
-                    <span
-                      className="text-sm text-gray-600 truncate max-w-[120px]"
-                      title={user.id}
-                    >
-                      {user.id}
-                    </span>
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <span
+                        className="text-sm text-gray-600 truncate"
+                        title={user.id}
+                      >
+                        {user.id}
+                      </span>
+                      {/* 🔥 NEW: Show user role */}
+                      {user.role && (
+                        <span
+                          className={`text-[10px] font-medium ${
+                            user.role === "admin"
+                              ? "text-green-600"
+                              : "text-gray-500"
+                          }`}
+                        >
+                          {user.role === "admin" ? "Admin" : "Viewer"}
+                        </span>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
             </div>
           </div>
 
-          {/* Add Board Button */}
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-1 sm:gap-2 bg-gray-900 hover:bg-black text-white px-2 sm:px-4 py-2 rounded-lg transition-colors"
-            title="Add Board"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {/* Add Board Button - 🔥 Hidden for viewers */}
+          {!isReadOnly && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-1 sm:gap-2 bg-gray-900 hover:bg-black text-white px-2 sm:px-4 py-2 rounded-lg transition-colors"
+              title="Add Board"
             >
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span className="hidden md:inline text-xs lg:text-sm font-medium">
-              Add Board
-            </span>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span className="hidden md:inline text-xs lg:text-sm font-medium">
+                Add Board
+              </span>
+            </button>
+          )}
 
-          {/* Save to Google Drive */}
-          <button
-            onClick={handleSaveToDrive}
-            className="flex items-center gap-1 sm:gap-2 bg-green-600 hover:bg-green-700 text-white px-2 sm:px-4 py-2 rounded-lg transition-colors shadow-sm"
-            title="Save to Google Drive"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {/* Save to Google Drive - 🔥 Hidden for viewers */}
+          {!isReadOnly && (
+            <button
+              onClick={handleSaveToDrive}
+              className="flex items-center gap-1 sm:gap-2 bg-green-600 hover:bg-green-700 text-white px-2 sm:px-4 py-2 rounded-lg transition-colors shadow-sm"
+              title="Save to Google Drive"
             >
-              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-              <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-              <path d="M12 18v-6" />
-              <path d="m9 15 3 3 3-3" />
-            </svg>
-            <span className="hidden lg:inline text-xs xl:text-sm font-medium">
-              Save to Drive
-            </span>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+                <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+                <path d="M12 18v-6" />
+                <path d="m9 15 3 3 3-3" />
+              </svg>
+              <span className="hidden lg:inline text-xs xl:text-sm font-medium">
+                Save to Drive
+              </span>
+            </button>
+          )}
 
           {/* Logout Button */}
           <button
@@ -981,10 +1090,12 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                 name={board.name}
                 initialPos={board.position}
                 content={board.content}
-                onContentChange={(newContent) =>
-                  updateBoardContent(board.id, newContent)
-                }
-                onMouseDown={(e) =>
+                onContentChange={(newContent) => {
+                  if (isReadOnly) return; // 🔥 BLOCK EDITING
+                  updateBoardContent(board.id, newContent);
+                }}
+                onMouseDown={(e) => {
+                  if (isReadOnly) return; // 🔥 BLOCK EDITING
                   handleDragStart(
                     board,
                     e,
@@ -1001,15 +1112,20 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                     saveTimeout,
                     lastSave,
                     canvasDimensions
-                  )
-                }
-                onRename={(newName) =>
-                  updateItemName(board.id, newName, "text")
-                }
-                onDelete={() => emitDeleteItem(board.id, "text")}
+                  );
+                }}
+                onRename={(newName) => {
+                  if (isReadOnly) return; // 🔥 BLOCK EDITING
+                  updateItemName(board.id, newName, "text");
+                }}
+                onDelete={() => {
+                  if (isReadOnly) return; // 🔥 BLOCK EDITING
+                  emitDeleteItem(board.id, "text");
+                }}
                 socket={socket}
                 roomId={roomId}
                 userEmail={userEmail}
+                isReadOnly={isReadOnly}
               />
             </div>
           ))}
@@ -1027,7 +1143,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                 name={img.name}
                 initialPos={img.position}
                 content={img.content}
-                onMouseDown={(e) =>
+                onMouseDown={(e) => {
+                  if (isReadOnly) return; // 🔥 BLOCK EDITING
                   handleDragStart(
                     img,
                     e,
@@ -1044,57 +1161,65 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
                     saveTimeout,
                     lastSave,
                     canvasDimensions
-                  )
-                }
-                onRename={(newName) => updateItemName(img.id, newName, "image")}
-                onDelete={() => emitDeleteItem(img.id, "image")}
+                  );
+                }}
+                onRename={(newName) => {
+                  if (isReadOnly) return; // 🔥 BLOCK EDITING
+                  updateItemName(img.id, newName, "image");
+                }}
+                onDelete={() => {
+                  if (isReadOnly) return; // 🔥 BLOCK EDITING
+                  emitDeleteItem(img.id, "image");
+                }}
               />
             </div>
           ))}
         </div>
-
-        {/* TOGGLE BUTTON*/}
-        <div className="fixed z-60 bottom-24 left-4 md:left-0 md:top-1/2 md:bottom-auto md:-translate-y-1/2">
-          <button
-            onClick={() => setIsToolbarVisible(!isToolbarVisible)}
-            className="bg-white border border-gray-200 md:border-l-0 text-gray-600 p-2 md:pr-3 rounded-full md:rounded-r-xl md:rounded-l-none shadow-md hover:bg-gray-50 transition-colors"
-          >
-            {isToolbarVisible ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="rotate-90 md:rotate-0"
+        {/* TOOLBAR - 🔥 Only show for admins */}
+        {!isReadOnly && (
+          <>
+            {/* TOGGLE BUTTON*/}
+            <div className="fixed z-60 bottom-24 left-4 md:left-0 md:top-1/2 md:bottom-auto md:-translate-y-1/2">
+              <button
+                onClick={() => setIsToolbarVisible(!isToolbarVisible)}
+                className="bg-white border border-gray-200 md:border-l-0 text-gray-600 p-2 md:pr-3 rounded-full md:rounded-r-xl md:rounded-l-none shadow-md hover:bg-gray-50 transition-colors"
               >
-                <path d="m15 18-6-6 6-6" />
-              </svg>
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="m9 18 6-6-6-6" />
-              </svg>
-            )}
-          </button>
-        </div>
+                {isToolbarVisible ? (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="rotate-90 md:rotate-0"
+                  >
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                )}
+              </button>
+            </div>
 
-        {/*TOOLBAR */}
-        <aside
-          className={`
+            {/*TOOLBAR */}
+            <aside
+              className={`
             fixed z-50
             bg-white/95 backdrop-blur-sm shadow-xl border border-gray-200/60 p-3
             flex gap-5 transition-all duration-300 ease-in-out
@@ -1113,214 +1238,224 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
               isToolbarVisible ? "md:translate-x-0" : "md:-translate-x-[150%]"
             }
           `}
-        >
-          <div className="flex md:flex-col flex-row gap-1.5">
-            {["pencil", "line", "rect", "circle", "eraser"].map((tool) => (
+            >
+              <div className="flex md:flex-col flex-row gap-1.5">
+                {["pencil", "line", "rect", "circle", "eraser"].map((tool) => (
+                  <button
+                    key={tool}
+                    onClick={() => setSelectedTool(tool)}
+                    className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
+                      selectedTool === tool
+                        ? "bg-black text-white"
+                        : "hover:bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {tool === "pencil" && (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                        <path d="m15 5 4 4" />
+                      </svg>
+                    )}
+                    {tool === "line" && (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M5 12h14" />
+                      </svg>
+                    )}
+                    {tool === "rect" && (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect
+                          width="18"
+                          height="18"
+                          x="3"
+                          y="3"
+                          rx="2"
+                          ry="2"
+                        />
+                      </svg>
+                    )}
+                    {tool === "circle" && (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                      </svg>
+                    )}
+                    {tool === "eraser" && (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
+                        <path d="M22 21H7" />
+                        <path d="m5 11 9 9" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+
+              <div className="flex md:flex-col flex-row gap-2 items-center">
+                <input
+                  type="color"
+                  value={selectedColor}
+                  onChange={(e) => setSelectedColor(e.target.value)}
+                  className="w-8 h-8 rounded-full border-2 border-white cursor-pointer"
+                />
+                <input
+                  type="range"
+                  min="1"
+                  max="20"
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                  className="md:w-1.5 md:h-20 w-20 h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer"
+                  style={
+                    {
+                      writingMode:
+                        typeof window !== "undefined" &&
+                        window.innerWidth >= 768
+                          ? "vertical-lr"
+                          : "horizontal-tb",
+                    } as any
+                  }
+                />
+              </div>
+
+              <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+
               <button
-                key={tool}
-                onClick={() => setSelectedTool(tool)}
-                className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
-                  selectedTool === tool
-                    ? "bg-black text-white"
-                    : "hover:bg-gray-100 text-gray-500"
-                }`}
+                onClick={() => fileInputRef.current?.click()}
+                className="p-1 rounded-xl flex items-center justify-center transition-all hover:bg-gray-100 text-gray-500"
+                title="Upload Image"
               >
-                {tool === "pencil" && (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                    <path d="m15 5 4 4" />
-                  </svg>
-                )}
-                {tool === "line" && (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M5 12h14" />
-                  </svg>
-                )}
-                {tool === "rect" && (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                  </svg>
-                )}
-                {tool === "circle" && (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                  </svg>
-                )}
-                {tool === "eraser" && (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
-                    <path d="M22 21H7" />
-                    <path d="m5 11 9 9" />
-                  </svg>
-                )}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                  <circle cx="9" cy="9" r="2" />
+                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                </svg>
               </button>
-            ))}
-          </div>
 
-          <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+              <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
 
-          <div className="flex md:flex-col flex-row gap-2 items-center">
-            <input
-              type="color"
-              value={selectedColor}
-              onChange={(e) => setSelectedColor(e.target.value)}
-              className="w-8 h-8 rounded-full border-2 border-white cursor-pointer"
-            />
-            <input
-              type="range"
-              min="1"
-              max="20"
-              value={brushSize}
-              onChange={(e) => setBrushSize(Number(e.target.value))}
-              className="md:w-1.5 md:h-20 w-20 h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer"
-              style={
-                {
-                  writingMode:
-                    typeof window !== "undefined" && window.innerWidth >= 768
-                      ? "vertical-lr"
-                      : "horizontal-tb",
-                } as any
-              }
-            />
-          </div>
-
-          <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
-
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-1 rounded-xl flex items-center justify-center transition-all hover:bg-gray-100 text-gray-500"
-            title="Upload Image"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-              <circle cx="9" cy="9" r="2" />
-              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-            </svg>
-          </button>
-
-          <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
-
-          <div className="flex md:flex-col flex-row gap-1">
-            <button
-              onClick={undo}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 7v6h6" />
-                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
-              </svg>
-            </button>
-            <button
-              onClick={redo}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 7v6h-6" />
-                <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
-              </svg>
-            </button>
-            <button
-              onClick={clearCanvas}
-              className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 6h18" />
-                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-              </svg>
-            </button>
-          </div>
-        </aside>
+              <div className="flex md:flex-col flex-row gap-1">
+                <button
+                  onClick={undo}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 7v6h6" />
+                    <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+                  </svg>
+                </button>
+                <button
+                  onClick={redo}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 7v6h-6" />
+                    <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={clearCanvas}
+                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </aside>
+          </>
+        )}
       </div>
     </div>
   );

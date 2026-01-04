@@ -22,6 +22,7 @@ interface BoardProps {
   socket?: any;
   roomId?: string;
   userEmail?: string;
+  isReadOnly?: boolean; // 🔥 NEW PROP
 }
 
 const Board = forwardRef<HTMLDivElement, BoardProps>(
@@ -38,6 +39,7 @@ const Board = forwardRef<HTMLDivElement, BoardProps>(
       socket,
       roomId,
       userEmail,
+      isReadOnly, // 🔥 DEFAULT TO FALSE
     },
     ref
   ) => {
@@ -52,10 +54,12 @@ const Board = forwardRef<HTMLDivElement, BoardProps>(
       ],
       content: content || "<p>Hello World! 🌎</p>",
       immediatelyRender: false,
+      editable: !isReadOnly, // 🔥 NEW: Disable editing for viewers
       editorProps: {
         attributes: {
-          class:
-            "prose prose-sm sm:prose lg:prose-lg m-2 focus:outline-none min-h-[100px] leading-tight",
+          class: `prose prose-sm sm:prose lg:prose-lg m-2 focus:outline-none min-h-[100px] leading-tight ${
+            isReadOnly ? "cursor-not-allowed opacity-70" : ""
+          }`, // 🔥 NEW: Visual cue for read-only
         },
       },
       onUpdate: ({ editor }) => {

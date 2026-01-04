@@ -1,22 +1,32 @@
-//src\lib\firebase.ts
-
-import { initializeApp } from "firebase/app";
-
+// src/lib/firebase.ts
+import { initializeApp, getApps } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// 🔥 UPDATED CONFIGURATION (From your screenshot)
 const firebaseConfig = {
-  apiKey: "AIzaSyDCRJUdLgzF3ZCozhBagjiC3auS5vtieaw",
-  authDomain: "whiteboard-b0629.firebaseapp.com",
-  projectId: "whiteboard-b0629",
-  storageBucket: "whiteboard-b0629.firebasestorage.app",
-  messagingSenderId: "1054139719426",
-  appId: "1:1054139719426:web:df63e686c4da88e26b6c1b",
-  measurementId: "G-S189DGRCQK",
+  apiKey: "AIzaSyDeGFEIGzfrw4mPvuN1Qe7lLRKRmo82DPo",
+  authDomain: "whiteboard-b0629-d3a24.firebaseapp.com",
+  projectId: "whiteboard-b0629-d3a24",
+  storageBucket: "whiteboard-b0629-d3a24.firebasestorage.app",
+  messagingSenderId: "621071052468",
+  appId: "1:621071052468:web:a2e5fb2b740395dcb7b1e1",
+  measurementId: "G-V2WQJCB2JH",
 };
 
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase (prevent duplicate initialization)
+const app =
+  getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
+
+// Add required scopes for Drive access
+provider.addScope("https://www.googleapis.com/auth/drive.file");
+
 export const db = getFirestore(app);
+
+console.log(
+  "✅ Firebase initialized with CORRECT project:",
+  firebaseConfig.projectId
+);

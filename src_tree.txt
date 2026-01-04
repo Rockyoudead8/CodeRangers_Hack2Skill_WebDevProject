@@ -26,22 +26,15 @@
  ┃ ┃ ┃ ┣ 📜IBoard.tsx
  ┃ ┃ ┃ ┣ 📜layout.tsx
  ┃ ┃ ┃ ┣ 📜page.tsx
- ┃ ┃ ┃ ┣ 📜pageold.tsx
  ┃ ┃ ┃ ┣ 📜RoomClient.tsx
  ┃ ┃ ┃ ┗ 📜WhiteBoard.tsx
- ┃ ┣ 📂signup
- ┃ ┃ ┗ 📜page.tsx
- ┃ ┣ 📂verifyEmail
- ┃ ┃ ┗ 📂[hashedToken]
- ┃ ┃ ┃ ┗ 📜page.tsx
  ┃ ┣ 📜favicon.ico
  ┃ ┣ 📜globals.css
  ┃ ┣ 📜layout.tsx
  ┃ ┗ 📜page.tsx
- ┣ 📂helpers
- ┃ ┗ 📜mailer.ts
+ ┣ 📂components
+ ┃ ┗ 📜ProtectedRoute.tsx
  ┣ 📂hooks
- ┃ ┣ 📜useInfiniteCanvas.ts
  ┃ ┗ 📜useUser.ts
  ┣ 📂lib
  ┃ ┣ 📜firebase.ts
