@@ -165,7 +165,7 @@ export const useDraw = ({
         tool: tool as any,
         points: strokePoints,
         color: selectedColorRef.current,
-        lineWidth: brushSizeRef.current,
+        width: brushSizeRef.current,
       });
 
       setCanvasStrokes((prev) => [...prev, newStroke]);

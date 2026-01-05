@@ -357,24 +357,25 @@ export default function Whiteboard({
   }, [roomId]);
 
   // 🔥 NEW: Emit role when joining
-  useEffect(() => {
-    if (!socket.connected) socket.connect();
+  // useEffect(() => {
+  //   if (!socket.connected) socket.connect();
 
-    console.log(`🔐 Joining room ${roomId} as ${userRole}`);
-    socket.emit("userJoined", {
-      userId: userEmail,
-      roomId,
-      role: userRole, // Pass role to server
-    });
+  //   console.log(`🔐 Joining room ${roomId} as ${userRole}`);
+  //   socket.emit("userJoined", {
+  //     userId: userEmail,
+  //     roomId,
+  //     role: userRole, // Pass role to server
+  //   });
 
-    return () => {
-      socket.disconnect();
-    };
-  }, [roomId, userEmail, userRole]);
+  //   return () => {
+  //     // socket.disconnect();
+  //   };
+  // }, [roomId, userEmail, userRole]);
 
   useSync({
     roomId,
     userEmail,
+    userRole, // ✅ ADD THIS LINE
     crdtRef,
     setCanvasStrokes,
     setCanvasDimensions,

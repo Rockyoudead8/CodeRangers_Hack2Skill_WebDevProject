@@ -23,7 +23,7 @@ export const renderAllStrokes = ({
   canvasStrokes.forEach((stroke) => {
     ctx.strokeStyle = stroke.color;
     ctx.fillStyle = stroke.color;
-    ctx.lineWidth = stroke.lineWidth;
+    ctx.lineWidth = stroke.width;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
@@ -74,10 +74,10 @@ export const renderAllStrokes = ({
         // Eraser just clears rectangles at each point
         stroke.points.forEach((point) => {
           ctx.clearRect(
-            point.x - stroke.lineWidth / 2,
-            point.y - stroke.lineWidth / 2,
-            stroke.lineWidth,
-            stroke.lineWidth
+            point.x - stroke.width / 2,
+            point.y - stroke.width / 2,
+            stroke.width,
+            stroke.width
           );
         });
         break;

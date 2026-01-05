@@ -11,7 +11,7 @@ export interface CanvasStroke {
   tool: "pencil" | "line" | "rect" | "circle" | "eraser";
   points: Point[];
   color: string;
-  lineWidth: number;
+  width: number;
   timestamp: number;
   vectorClock: Record<string, number>;
 }

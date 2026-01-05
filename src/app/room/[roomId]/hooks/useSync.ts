@@ -9,6 +9,7 @@ import { socket } from "@/app/lib/socket";
 interface UseSyncProps {
   roomId: string;
   userEmail: string;
+  userRole: "admin" | "viewer" | null;
   crdtRef: React.RefObject<CRDTManager | null>;
   setCanvasStrokes: React.Dispatch<React.SetStateAction<CanvasStroke[]>>;
   setCanvasDimensions: React.Dispatch<React.SetStateAction<CanvasDimensions>>; // NEW
@@ -20,6 +21,7 @@ interface UseSyncProps {
 export const useSync = ({
   roomId,
   userEmail,
+  userRole,
   crdtRef,
   setCanvasStrokes,
   setCanvasDimensions,
@@ -33,7 +35,7 @@ export const useSync = ({
     if (!socket.connected) socket.connect();
 
     console.log(`Joining room ${roomId} as ${userEmail}`);
-    socket.emit("userJoined", { userId: userEmail, roomId });
+    socket.emit("userJoined", { userId: userEmail, roomId, role: userRole });
 
     // ===== CANVAS HANDLERS =====
 
@@ -266,7 +268,6 @@ export const useSync = ({
       socket.off("image:update", handleImageUpdate);
       socket.off("image:delete", handleImageDelete);
       socket.off("board:focus", handleBoardFocus);
-      socket.disconnect();
     };
   }, [roomId, userEmail]);
 };

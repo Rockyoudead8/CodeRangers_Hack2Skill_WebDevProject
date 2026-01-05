@@ -1,4 +1,4 @@
-// server.js - WITH ZOD VALIDATION
+// server.js - FIXED VERSION with proper environment variable loading
 
 import { createServer } from "node:http";
 import next from "next";
@@ -9,15 +9,12 @@ import admin from "firebase-admin";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-// 🔥 NEW: Import validation helpers
-import {
-  onValidated,
-  isRateLimited,
-} from "./src/lib/validation/socketMiddleware.js";
 
-// Load environment variables
+// 🔥 FIX 1: Load environment variables manually for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Load .env.local file
 dotenv.config({ path: join(__dirname, ".env.local") });
 
 console.log("🔍 Checking environment variables:");
@@ -38,14 +35,18 @@ console.log(
 // FIREBASE ADMIN SETUP
 // ==========================================
 
+// Initialize Firebase Admin SDK
 if (!admin.apps.length) {
   try {
     const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
     if (!privateKey) {
       throw new Error("FIREBASE_PRIVATE_KEY is not set in .env.local");
     }
 
+    // 🔥 FIX 2: Ensure private key has proper newlines
     const formattedPrivateKey = privateKey.replace(/\\n/g, "\n");
+
     console.log(
       "🔑 Private key loaded, first 50 chars:",
       formattedPrivateKey.substring(0, 50)
@@ -55,18 +56,19 @@ if (!admin.apps.length) {
       credential: admin.credential.cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: formattedPrivateKey,
+        privateKey: formattedPrivateKey, // Use formatted key
       }),
     });
 
     console.log("✅ Firebase Admin initialized successfully");
   } catch (error) {
     console.error("❌ Firebase Admin initialization failed:", error.message);
-    console.log("⚠️ Admin key verification will not work!");
+    console.log("⚠️  Admin key verification will not work!");
     console.log("📝 Please check your .env.local file");
   }
 }
 
+// Get Firestore instance
 let db;
 try {
   db = admin.firestore();
@@ -75,6 +77,7 @@ try {
   console.error("❌ Firestore initialization failed:", error.message);
 }
 
+// Helper function to hash admin key (must match client-side hashing)
 function hashAdminKey(key) {
   return crypto.createHash("sha256").update(key).digest("hex");
 }
@@ -98,37 +101,24 @@ app.prepare().then(() => {
   });
 
   // Storage
-  const roomHistory = {};
+  const roomHistory = {}; // { roomId: { strokes: [], dimensions: {...} } }
   const boardHistory = {};
   const imageHistory = {};
-  const userRoles = {};
+
+  // 🔥 Track user roles per socket
+  const userRoles = {}; // { socketId: { roomId, role, userId } }
 
   io.on("connection", (socket) => {
     console.log("✅ Socket connected:", socket.id);
 
     // ==========================================
-    // 🔥 VALIDATED: ADMIN KEY VERIFICATION
+    // 🔥 ADMIN KEY VERIFICATION HANDLER
     // ==========================================
-    onValidated(socket, "room:verify-admin", async (socket, data, callback) => {
-      const { roomId, inputKey } = data;
-
-      // Rate limiting
-      if (
-        isRateLimited(socket.id, "room:verify-admin", {
-          maxRequests: 5,
-          windowMs: 60000,
-        })
-      ) {
-        console.log("🚫 Rate limit exceeded for admin verification");
-        return callback({
-          success: false,
-          error: "Too many attempts. Please try again later.",
-        });
-      }
-
+    socket.on("room:verify-admin", async ({ roomId, inputKey }, callback) => {
       try {
-        console.log("🔍 Verifying admin key for room:", roomId);
+        console.log("🔐 Verifying admin key for room:", roomId);
 
+        // 🔥 FIX 3: Check if db is available
         if (!db) {
           console.error("❌ Firestore not initialized");
           return callback({
@@ -137,24 +127,38 @@ app.prepare().then(() => {
           });
         }
 
+        if (!inputKey || typeof inputKey !== "string") {
+          console.log("❌ Invalid key format");
+          return callback({
+            success: false,
+            error: "Invalid admin key format",
+          });
+        }
+
+        // Fetch room from Firestore
         const roomRef = db.collection("rooms").doc(roomId);
         const roomDoc = await roomRef.get();
 
         if (!roomDoc.exists) {
           console.log("❌ Room not found:", roomId);
-          return callback({ success: false, error: "Room not found" });
+          return callback({
+            success: false,
+            error: "Room not found",
+          });
         }
 
         const roomData = roomDoc.data();
 
+        // Check if room is role-based
         if (!roomData?.isRoleBased) {
-          console.log("⚠️ Room is not role-based");
+          console.log("⚠️  Room is not role-based");
           return callback({
             success: false,
             error: "This room doesn't require admin verification",
           });
         }
 
+        // Hash the input key
         const inputKeyHash = hashAdminKey(inputKey);
         const storedHash = roomData.adminKeyHash;
 
@@ -164,19 +168,26 @@ app.prepare().then(() => {
           match: inputKeyHash === storedHash,
         });
 
+        // Compare with stored hash
         if (inputKeyHash === storedHash) {
           console.log("✅ Admin key verified successfully for room:", roomId);
 
+          // Store verified admin role
           userRoles[socket.id] = {
             ...userRoles[socket.id],
             role: "admin",
             roomId,
           };
 
-          return callback({ success: true });
+          return callback({
+            success: true,
+          });
         } else {
           console.log("❌ Invalid admin key for room:", roomId);
-          return callback({ success: false, error: "Invalid admin key" });
+          return callback({
+            success: false,
+            error: "Invalid admin key",
+          });
         }
       } catch (error) {
         console.error("❌ Admin verification error:", error);
@@ -188,11 +199,9 @@ app.prepare().then(() => {
     });
 
     // ==========================================
-    // 🔥 VALIDATED: USER JOIN
+    // 🔥 USER JOIN (with role tracking)
     // ==========================================
-    onValidated(socket, "userJoined", async (socket, data) => {
-      const { userId, roomId, role } = data;
-
+    socket.on("userJoined", ({ userId, roomId, role }) => {
       const userData = {
         id: userId,
         roomId,
@@ -202,6 +211,7 @@ app.prepare().then(() => {
       userJoin(userData);
       socket.join(roomId);
 
+      // 🔥 Store user role
       userRoles[socket.id] = { roomId, role: role || "admin", userId };
 
       const roomUsers = getUsers(roomId);
@@ -226,6 +236,7 @@ app.prepare().then(() => {
       socket.emit("userIsJoined", { success: true, users: roomUsers });
       socket.broadcast.to(roomId).emit("allUsers", roomUsers);
 
+      // Sync everything including dimensions
       socket.emit("boards:sync", boardHistory[roomId]);
       socket.emit("images:sync", imageHistory[roomId]);
       socket.emit("canvas:sync", roomHistory[roomId].strokes);
@@ -235,7 +246,7 @@ app.prepare().then(() => {
         "👤 userJoined:",
         userId,
         roomId,
-        `(${role})`,
+        `(${role || "admin"})`,
         "Strokes:",
         roomHistory[roomId].strokes.length,
         "Canvas:",
@@ -252,25 +263,12 @@ app.prepare().then(() => {
     };
 
     // ==========================================
-    // 🔥 VALIDATED: CANVAS OPERATIONS
+    // 🔥 PROTECTED: CANVAS OPERATIONS (admin only)
     // ==========================================
 
-    onValidated(socket, "canvas:stroke", async (socket, data) => {
-      const { roomId, stroke } = data;
-
+    socket.on("canvas:stroke", ({ roomId, stroke }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked canvas:stroke from viewer");
-        return;
-      }
-
-      // Rate limiting for drawing
-      if (
-        isRateLimited(socket.id, "canvas:stroke", {
-          maxRequests: 200,
-          windowMs: 1000,
-        })
-      ) {
-        console.log("🚫 Rate limit exceeded for canvas:stroke");
         return;
       }
 
@@ -287,9 +285,7 @@ app.prepare().then(() => {
       socket.broadcast.to(roomId).emit("canvas:stroke", stroke);
     });
 
-    onValidated(socket, "canvas:clear", async (socket, data) => {
-      const { roomId } = data;
-
+    socket.on("canvas:clear", ({ roomId }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked canvas:clear from viewer");
         return;
@@ -304,9 +300,7 @@ app.prepare().then(() => {
       io.to(roomId).emit("canvas:clear");
     });
 
-    onValidated(socket, "canvas:undo", async (socket, data) => {
-      const { roomId, strokeId } = data;
-
+    socket.on("canvas:undo", ({ roomId, strokeId }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked canvas:undo from viewer");
         return;
@@ -327,9 +321,7 @@ app.prepare().then(() => {
       io.to(roomId).emit("canvas:undo", strokeId);
     });
 
-    onValidated(socket, "canvas:resize", async (socket, data) => {
-      const { roomId, dimensions } = data;
-
+    socket.on("canvas:resize", ({ roomId, dimensions }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked canvas:resize from viewer");
         return;
@@ -354,7 +346,7 @@ app.prepare().then(() => {
       roomHistory[roomId].dimensions = mergedDimensions;
 
       console.log(
-        "📏 Canvas resized for room",
+        "📐 Canvas resized for room",
         roomId,
         `${mergedDimensions.width}x${mergedDimensions.height}`
       );
@@ -363,12 +355,10 @@ app.prepare().then(() => {
     });
 
     // ==========================================
-    // 🔥 VALIDATED: BOARD OPERATIONS
+    // 🔥 PROTECTED: BOARD OPERATIONS (admin only)
     // ==========================================
 
-    onValidated(socket, "board:add", async (socket, data) => {
-      const { roomId, boardData } = data;
-
+    socket.on("board:add", ({ roomId, boardData }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked board:add from viewer");
         return;
@@ -381,9 +371,7 @@ app.prepare().then(() => {
 
     const boardUpdateBuffers = {};
 
-    onValidated(socket, "board:update", async (socket, data) => {
-      const { roomId, boardData } = data;
-
+    socket.on("board:update", ({ roomId, boardData }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked board:update from viewer");
         return;
@@ -398,6 +386,7 @@ app.prepare().then(() => {
 
       const buffer = boardUpdateBuffers[roomId][boardData.id];
       buffer.push(boardData);
+
       buffer.sort((a, b) => a.sequence - b.sequence);
 
       const latestUpdate = buffer[buffer.length - 1];
@@ -419,9 +408,7 @@ app.prepare().then(() => {
       }, 5000);
     });
 
-    onValidated(socket, "board:delete", async (socket, data) => {
-      const { roomId, boardId } = data;
-
+    socket.on("board:delete", ({ roomId, boardId }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked board:delete from viewer");
         return;
@@ -435,12 +422,10 @@ app.prepare().then(() => {
     });
 
     // ==========================================
-    // 🔥 VALIDATED: IMAGE OPERATIONS
+    // 🔥 PROTECTED: IMAGE OPERATIONS (admin only)
     // ==========================================
 
-    onValidated(socket, "image:add", async (socket, data) => {
-      const { roomId, imageData } = data;
-
+    socket.on("image:add", ({ roomId, imageData }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked image:add from viewer");
         return;
@@ -451,9 +436,7 @@ app.prepare().then(() => {
       io.to(roomId).emit("image:add", imageData);
     });
 
-    onValidated(socket, "image:update", async (socket, data) => {
-      const { roomId, imageData } = data;
-
+    socket.on("image:update", ({ roomId, imageData }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked image:update from viewer");
         return;
@@ -469,9 +452,7 @@ app.prepare().then(() => {
       }
     });
 
-    onValidated(socket, "image:delete", async (socket, data) => {
-      const { roomId, imageId } = data;
-
+    socket.on("image:delete", ({ roomId, imageId }) => {
       if (!isAdmin(socket.id)) {
         console.log("🚫 Blocked image:delete from viewer");
         return;
@@ -504,6 +485,5 @@ app.prepare().then(() => {
   httpServer.listen(port, () => {
     console.log(`🚀 Server ready on http://${hostname}:${port}`);
     console.log(`📦 Environment: ${dev ? "development" : "production"}`);
-    console.log(`🔒 Zod validation: ENABLED`);
   });
 });
