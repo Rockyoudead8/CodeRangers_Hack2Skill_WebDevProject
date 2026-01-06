@@ -1,4 +1,4 @@
-//src/app/room/[roomId]/RoomClient.tsx
+// src/app/room/[roomId]/RoomClient.tsx - UPDATED with smart joining logic
 
 "use client";
 
@@ -6,7 +6,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import useUser from "@/hooks/useUser";
 import Whiteboard from "./WhiteBoard";
-import { createRoom, getRoomAccessInfo } from "@/lib/roomService";
+import {
+  createRoom,
+  getRoomAccessInfo,
+  getRoom,
+  updateRoomLastAccessed,
+} from "@/lib/roomService";
 import { socket } from "@/app/lib/socket";
 import { Shield, Eye, Lock, AlertCircle } from "lucide-react";
 
@@ -25,7 +30,7 @@ export default function RoomClient({ roomId }: { roomId: string }) {
   const [verificationError, setVerificationError] = useState("");
 
   // ==========================================
-  // 1. FETCH ROOM ACCESS INFO
+  // 1. FETCH ROOM ACCESS INFO WITH SMART LOGIC
   // ==========================================
 
   useEffect(() => {
@@ -53,14 +58,34 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
         setRoomAccessInfo(accessInfo);
 
+        // 🔥 NEW: Update lastAccessed timestamp for saved rooms
+        if (user.uid) {
+          updateRoomLastAccessed(user.uid, roomId).catch((err) => {
+            console.warn("⚠️ Failed to update lastAccessed:", err);
+          });
+        }
+
         // Check if user already has admin access from room creation
         const sessionRole = sessionStorage.getItem(`room_${roomId}_role`);
 
         if (sessionRole === "admin") {
-          console.log("✅ User has admin access from creation");
+          console.log("✅ User has admin access from session");
           setUserRole("admin");
           setLoadingRoom(false);
           return;
+        }
+
+        // 🔥 NEW: SMART JOINING - Check if user is room creator
+        if (accessInfo.isRoleBased) {
+          const roomData = await getRoom(roomId);
+
+          if (roomData && roomData.createdBy === user.uid) {
+            console.log("✅ User is room creator - granting admin access");
+            setUserRole("admin");
+            sessionStorage.setItem(`room_${roomId}_role`, "admin");
+            setLoadingRoom(false);
+            return;
+          }
         }
 
         // PUBLIC ROOM: Auto-grant admin access
@@ -71,8 +96,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
           return;
         }
 
-        // ROLE-BASED ROOM: Show modal
-        console.log("🔐 Role-based room - showing role selection modal");
+        // ROLE-BASED ROOM (not creator): Show modal
+        console.log(
+          "🔐 Role-based room (not creator) - showing role selection modal"
+        );
         setShowRoleModal(true);
         setLoadingRoom(false);
       } catch (error) {
@@ -95,7 +122,6 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     setShowRoleModal(false);
   };
 
-  // 🔥 FIXED: Proper Socket.IO handling with timeout and error handling
   const handleVerifyAdminKey = async () => {
     if (!adminKeyInput.trim()) {
       setVerificationError("Please enter an admin key");
@@ -106,12 +132,10 @@ export default function RoomClient({ roomId }: { roomId: string }) {
     setVerificationError("");
 
     try {
-      // 🔥 FIX 1: Ensure socket is connected with timeout
       if (!socket.connected) {
         console.log("🔌 Socket not connected, attempting to connect...");
         socket.connect();
 
-        // Wait for connection with 5 second timeout
         await new Promise<void>((resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(new Error("Socket connection timeout"));
@@ -137,15 +161,12 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
       console.log("📡 Emitting room:verify-admin for room:", roomId);
 
-      // 🔥 FIX 2: Wrap Socket.IO emit in a Promise with timeout
       const verificationResult = await new Promise<any>((resolve, reject) => {
-        // 10 second timeout for verification
         const verificationTimeout = setTimeout(() => {
           console.error("❌ Verification timeout - server not responding");
           reject(new Error("Verification timeout. Server may be down."));
         }, 10000);
 
-        // Emit verification request
         socket.emit(
           "room:verify-admin",
           { roomId, inputKey: adminKeyInput },
@@ -159,7 +180,6 @@ export default function RoomClient({ roomId }: { roomId: string }) {
 
       setVerifying(false);
 
-      // 🔥 FIX 3: Handle response properly
       if (verificationResult && verificationResult.success) {
         console.log("✅ Admin key verified successfully");
         setUserRole("admin");

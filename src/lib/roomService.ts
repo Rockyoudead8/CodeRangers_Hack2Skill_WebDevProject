@@ -1,4 +1,4 @@
-// src/lib/roomService.ts - FINAL FIX with correct UID usage
+// src/lib/roomService.ts - UPDATED with Saved Rooms functionality
 
 import {
   doc,
@@ -6,9 +6,13 @@ import {
   getDoc,
   serverTimestamp,
   updateDoc,
+  arrayUnion,
+  arrayRemove,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { onSnapshot } from "firebase/firestore";
+import { SavedRoom, UserRoomsDocument } from "@/types/room";
 
 // ==========================================
 // RBAC TYPES
@@ -50,7 +54,7 @@ export async function hashAdminKey(key: string): Promise<string> {
 }
 
 // ==========================================
-// ROOM CREATION - FIXED WITH CORRECT UID
+// ROOM CREATION - WITH AUTO-SAVE
 // ==========================================
 
 export interface CreateRoomOptions {
@@ -120,7 +124,7 @@ export async function createRoom({
 
     console.log("💾 Room data prepared:", {
       roomId,
-      createdBy: roomData.createdBy, // Should show UID
+      createdBy: roomData.createdBy,
       isRoleBased,
       hasAdminKey: !!adminKeyHash,
     });
@@ -134,6 +138,20 @@ export async function createRoom({
     await setDoc(ref, roomData);
 
     console.log("✅ Room created successfully!");
+
+    // 🔥 NEW: Auto-save to user's savedRooms
+    try {
+      await saveRoomToList(
+        user.uid,
+        roomId,
+        isRoleBased ? "rbac" : "public",
+        true
+      );
+      console.log("✅ Room auto-saved to user's list");
+    } catch (saveError) {
+      console.error("⚠️ Failed to auto-save room to list:", saveError);
+      // Don't throw error - room creation succeeded
+    }
 
     return {
       exists: false,
@@ -153,6 +171,268 @@ export async function createRoom({
 
     throw error;
   }
+}
+
+// ==========================================
+// SAVED ROOMS MANAGEMENT
+// ==========================================
+
+/**
+ * Save room to user's personal list
+ */
+export async function saveRoomToList(
+  userId: string,
+  roomId: string,
+  roomType: "public" | "rbac",
+  isCreator: boolean = false
+): Promise<void> {
+  if (!userId || !roomId) {
+    throw new Error("User ID and Room ID are required");
+  }
+
+  const userRoomsRef = doc(db, "userRooms", userId);
+
+  try {
+    // Check if room already saved
+    const userRoomsDoc = await getDoc(userRoomsRef);
+
+    if (userRoomsDoc.exists()) {
+      const existingRooms = userRoomsDoc.data().savedRooms || [];
+      const alreadySaved = existingRooms.some(
+        (room: SavedRoom) => room.roomId === roomId
+      );
+
+      if (alreadySaved) {
+        console.log("⚠️ Room already in saved list, updating lastAccessed");
+        // Update lastAccessed timestamp
+        await updateRoomLastAccessed(userId, roomId);
+        return;
+      }
+    }
+
+    const newSavedRoom: SavedRoom = {
+      roomId,
+      customName: roomId, // Default to roomId
+      addedAt: Timestamp.now(),
+      isCreator,
+      lastAccessed: Timestamp.now(),
+      roomType,
+    };
+
+    // Add to savedRooms array (create document if doesn't exist)
+    await setDoc(
+      userRoomsRef,
+      {
+        savedRooms: arrayUnion(newSavedRoom),
+      },
+      { merge: true }
+    );
+
+    console.log("✅ Room saved to user's list:", roomId);
+  } catch (error: any) {
+    console.error("❌ Failed to save room to list:", error);
+    throw error;
+  }
+}
+
+/**
+ * Remove room from user's saved list
+ * NOTE: Does NOT delete the actual room from Firestore
+ */
+export async function removeRoomFromList(
+  userId: string,
+  roomId: string
+): Promise<void> {
+  if (!userId || !roomId) {
+    throw new Error("User ID and Room ID are required");
+  }
+
+  const userRoomsRef = doc(db, "userRooms", userId);
+
+  try {
+    const userRoomsDoc = await getDoc(userRoomsRef);
+
+    if (!userRoomsDoc.exists()) {
+      console.log("⚠️ No saved rooms found for user");
+      return;
+    }
+
+    const savedRooms = userRoomsDoc.data().savedRooms || [];
+    const roomToRemove = savedRooms.find(
+      (room: SavedRoom) => room.roomId === roomId
+    );
+
+    if (!roomToRemove) {
+      console.log("⚠️ Room not in saved list");
+      return;
+    }
+
+    // Remove from array
+    await updateDoc(userRoomsRef, {
+      savedRooms: arrayRemove(roomToRemove),
+    });
+
+    console.log("✅ Room removed from saved list:", roomId);
+  } catch (error: any) {
+    console.error("❌ Failed to remove room from list:", error);
+    throw error;
+  }
+}
+
+/**
+ * Update room's custom name
+ */
+export async function updateRoomName(
+  userId: string,
+  roomId: string,
+  newName: string
+): Promise<void> {
+  if (!userId || !roomId || !newName) {
+    throw new Error("User ID, Room ID, and new name are required");
+  }
+
+  const userRoomsRef = doc(db, "userRooms", userId);
+
+  try {
+    const userRoomsDoc = await getDoc(userRoomsRef);
+
+    if (!userRoomsDoc.exists()) {
+      throw new Error("No saved rooms found");
+    }
+
+    const savedRooms = userRoomsDoc.data().savedRooms || [];
+    const updatedRooms = savedRooms.map((room: SavedRoom) =>
+      room.roomId === roomId ? { ...room, customName: newName } : room
+    );
+
+    await updateDoc(userRoomsRef, {
+      savedRooms: updatedRooms,
+    });
+
+    console.log("✅ Room name updated:", { roomId, newName });
+  } catch (error: any) {
+    console.error("❌ Failed to update room name:", error);
+    throw error;
+  }
+}
+
+/**
+ * Update lastAccessed timestamp for a room
+ */
+export async function updateRoomLastAccessed(
+  userId: string,
+  roomId: string
+): Promise<void> {
+  if (!userId || !roomId) return;
+
+  const userRoomsRef = doc(db, "userRooms", userId);
+
+  try {
+    const userRoomsDoc = await getDoc(userRoomsRef);
+
+    if (!userRoomsDoc.exists()) {
+      console.log("⚠️ No saved rooms found for user");
+      return;
+    }
+
+    const savedRooms = userRoomsDoc.data().savedRooms || [];
+    const updatedRooms = savedRooms.map((room: SavedRoom) =>
+      room.roomId === roomId ? { ...room, lastAccessed: Timestamp.now() } : room
+    );
+
+    await updateDoc(userRoomsRef, {
+      savedRooms: updatedRooms,
+    });
+
+    console.log("✅ Room lastAccessed updated:", roomId);
+  } catch (error: any) {
+    console.error("❌ Failed to update lastAccessed:", error);
+    // Don't throw - this is a non-critical operation
+  }
+}
+
+/**
+ * Get all saved rooms for a user
+ */
+export async function getUserRooms(userId: string): Promise<SavedRoom[]> {
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  const userRoomsRef = doc(db, "userRooms", userId);
+
+  try {
+    const userRoomsDoc = await getDoc(userRoomsRef);
+
+    if (!userRoomsDoc.exists()) {
+      console.log("⚠️ No saved rooms found for user");
+      return [];
+    }
+
+    const savedRooms = userRoomsDoc.data().savedRooms || [];
+
+    // Sort by lastAccessed (most recent first)
+    return savedRooms.sort(
+      (a: SavedRoom, b: SavedRoom) =>
+        b.lastAccessed.toMillis() - a.lastAccessed.toMillis()
+    );
+  } catch (error: any) {
+    console.error("❌ Failed to get user rooms:", error);
+    throw error;
+  }
+}
+
+/**
+ * Check if room exists in Firestore
+ */
+export async function checkRoomExists(roomId: string): Promise<boolean> {
+  if (!roomId) return false;
+
+  try {
+    const roomRef = doc(db, "rooms", roomId);
+    const roomDoc = await getDoc(roomRef);
+    return roomDoc.exists();
+  } catch (error) {
+    console.error("❌ Failed to check room existence:", error);
+    return false;
+  }
+}
+
+/**
+ * Subscribe to user's saved rooms (real-time updates)
+ */
+export function subscribeToUserRooms(
+  userId: string,
+  callback: (rooms: SavedRoom[]) => void
+): () => void {
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  const userRoomsRef = doc(db, "userRooms", userId);
+
+  return onSnapshot(
+    userRoomsRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const savedRooms = snapshot.data().savedRooms || [];
+
+        // Sort by lastAccessed (most recent first)
+        const sortedRooms = savedRooms.sort(
+          (a: SavedRoom, b: SavedRoom) =>
+            b.lastAccessed.toMillis() - a.lastAccessed.toMillis()
+        );
+
+        callback(sortedRooms);
+      } else {
+        callback([]);
+      }
+    },
+    (error) => {
+      console.error("❌ Firestore subscription error:", error);
+      callback([]);
+    }
+  );
 }
 
 // ==========================================

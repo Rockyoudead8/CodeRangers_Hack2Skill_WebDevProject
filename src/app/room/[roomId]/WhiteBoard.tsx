@@ -30,6 +30,12 @@ import { BoardData } from "./types";
 import type { CanvasStroke, Point, CanvasDimensions } from "./types/canvas";
 import { useDraw } from "./hooks/useDraw";
 import { useSync } from "./hooks/useSync";
+import { Bookmark, BookmarkCheck } from "lucide-react";
+import {
+  saveRoomToList,
+  getUserRooms,
+  getRoomAccessInfo,
+} from "@/lib/roomService";
 
 interface WhiteboardProps {
   roomId: string;
@@ -101,6 +107,10 @@ export default function Whiteboard({
   const [expandDirection, setExpandDirection] = useState<
     "horizontal" | "vertical"
   >("horizontal");
+
+  const [isRoomSaved, setIsRoomSaved] = useState(false);
+  const [checkingSaved, setCheckingSaved] = useState(true);
+  const [savingRoom, setSavingRoom] = useState(false);
 
   const handleSaveToDrive = async () => {
     try {
@@ -306,12 +316,10 @@ export default function Whiteboard({
   // LOGOUT
   // ==========================================
 
-  const handleLogout = async () => {
+  const handleLeave = async () => {
     try {
       socket.disconnect();
-      await signOut(auth);
-      localStorage.removeItem("drive_token"); // optional cleanup
-      router.push("/");
+      router.push("/home");
     } catch (error) {
       console.error("Logout failed", error);
       alert("Logout failed. Life remains disappointing.");
@@ -724,6 +732,43 @@ export default function Whiteboard({
     setExpandAmount(0);
   };
 
+  // ADD this handler function:
+
+  const handleSaveRoom = async () => {
+    if (isRoomSaved) return; // Already saved
+
+    setSavingRoom(true);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        toast.error("You must be logged in to save rooms");
+        return;
+      }
+
+      // Get room info to determine type
+      const roomInfo = await getRoomAccessInfo(roomId);
+      const roomType = roomInfo?.isRoleBased ? "rbac" : "public";
+
+      // Save to user's list
+      await saveRoomToList(
+        currentUser.uid,
+        roomId,
+        roomType,
+        userRole === "admin" &&
+          sessionStorage.getItem(`room_${roomId}_role`) === "admin"
+      );
+
+      setIsRoomSaved(true);
+      toast.success("Room saved to My Rooms!");
+    } catch (error: any) {
+      console.error("Failed to save room:", error);
+      toast.error(error.message || "Failed to save room");
+    } finally {
+      setSavingRoom(false);
+    }
+  };
+
   // Emergency save before page closes
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -744,6 +789,28 @@ export default function Whiteboard({
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [roomId, boards, images]);
+
+  useEffect(() => {
+    if (!userEmail || !roomId) return;
+
+    const checkIfRoomSaved = async () => {
+      try {
+        // Get user ID from auth
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+
+        const savedRooms = await getUserRooms(currentUser.uid);
+        const isSaved = savedRooms.some((room) => room.roomId === roomId);
+        setIsRoomSaved(isSaved);
+      } catch (error) {
+        console.error("Failed to check saved status:", error);
+      } finally {
+        setCheckingSaved(false);
+      }
+    };
+
+    checkIfRoomSaved();
+  }, [userEmail, roomId]);
   // ==========================================
   // 5. RENDER
   // ==========================================
@@ -787,7 +854,7 @@ export default function Whiteboard({
               {canvasDimensions.width}×{canvasDimensions.height}px
             </span>
 
-            {/* 🔥 NEW: Role Badge */}
+            {/* Role Badge */}
             <button
               onClick={userRole === "viewer" ? onUpgradeToAdmin : undefined}
               className={`ml-2 px-2 py-1 rounded-full text-xs font-semibold transition-all ${
@@ -845,7 +912,7 @@ export default function Whiteboard({
 
         {/* Right: Action Buttons */}
         <div className="flex items-center gap-1 sm:gap-2 md:gap-4">
-          {/* Canvas Resize Controls - 🔥 Hidden for viewers */}
+          {/* Canvas Resize Controls - Hidden for viewers */}
           {!isReadOnly && (
             <div className="hidden lg:flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
               <input
@@ -878,6 +945,37 @@ export default function Whiteboard({
                 Expand
               </button>
             </div>
+          )}
+
+          {/* 🔥 NEW: Save to My Rooms Button */}
+          {!checkingSaved && (
+            <button
+              onClick={handleSaveRoom}
+              disabled={isRoomSaved || savingRoom}
+              className={`hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                isRoomSaved
+                  ? "bg-green-600/20 text-green-400 border border-green-500/50 cursor-default"
+                  : "bg-gray-50 hover:bg-gray-100 border border-gray-200 cursor-pointer"
+              }`}
+              title={isRoomSaved ? "Room saved" : "Save to My Rooms"}
+            >
+              {savingRoom ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                  <span className="text-xs">Saving...</span>
+                </>
+              ) : isRoomSaved ? (
+                <>
+                  <BookmarkCheck className="w-4 h-4" />
+                  <span className="text-xs">Saved</span>
+                </>
+              ) : (
+                <>
+                  <Bookmark className="w-4 h-4 text-gray-600" />
+                  <span className="text-xs text-gray-600">Save Room</span>
+                </>
+              )}
+            </button>
           )}
 
           {/* Users Online */}
@@ -924,7 +1022,6 @@ export default function Whiteboard({
                       >
                         {user.id}
                       </span>
-                      {/* 🔥 NEW: Show user role */}
                       {user.role && (
                         <span
                           className={`text-[10px] font-medium ${
@@ -943,7 +1040,7 @@ export default function Whiteboard({
             </div>
           </div>
 
-          {/* Add Board Button - 🔥 Hidden for viewers */}
+          {/* Add Board Button - Hidden for viewers */}
           {!isReadOnly && (
             <button
               onClick={() => setIsModalOpen(true)}
@@ -970,40 +1067,38 @@ export default function Whiteboard({
             </button>
           )}
 
-          {/* Save to Google Drive - 🔥 Hidden for viewers */}
-          {!isReadOnly && (
-            <button
-              onClick={handleSaveToDrive}
-              className="flex items-center gap-1 sm:gap-2 bg-green-600 hover:bg-green-700 text-white px-2 sm:px-4 py-2 rounded-lg transition-colors shadow-sm"
-              title="Save to Google Drive"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-                <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-                <path d="M12 18v-6" />
-                <path d="m9 15 3 3 3-3" />
-              </svg>
-              <span className="hidden lg:inline text-xs xl:text-sm font-medium">
-                Save to Drive
-              </span>
-            </button>
-          )}
-
-          {/* Logout Button */}
+          {/* Save to Google Drive - Hidden for viewers */}
           <button
-            onClick={handleLogout}
+            onClick={handleSaveToDrive}
+            className="flex items-center gap-1 sm:gap-2 bg-green-600 hover:bg-green-700 text-white px-2 sm:px-4 py-2 rounded-lg transition-colors shadow-sm"
+            title="Save to Google Drive"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+              <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+              <path d="M12 18v-6" />
+              <path d="m9 15 3 3 3-3" />
+            </svg>
+            <span className="hidden lg:inline text-xs xl:text-sm font-medium">
+              Save to Drive
+            </span>
+          </button>
+
+          {/* Leave Button */}
+          <button
+            onClick={handleLeave}
             className="flex items-center gap-1 sm:gap-2 bg-red-500 hover:bg-red-600 text-white px-2 sm:px-4 py-2 rounded-lg transition-colors shadow-sm"
-            title="Logout"
+            title="Leave"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -1021,7 +1116,7 @@ export default function Whiteboard({
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
             <span className="hidden md:inline text-xs lg:text-sm font-medium">
-              Logout
+              Leave
             </span>
           </button>
         </div>

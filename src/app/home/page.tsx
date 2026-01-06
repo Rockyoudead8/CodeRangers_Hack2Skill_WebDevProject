@@ -1,4 +1,4 @@
-// src/app/home/page.tsx - Fixed with proper authentication checks
+// src/app/home/page.tsx - Updated with "My Rooms" feature
 
 "use client";
 
@@ -16,9 +16,11 @@ import {
   Eye,
   Lock,
   AlertCircle,
+  Folder,
 } from "lucide-react";
 import { createRoom, generateAdminKey } from "@/lib/roomService";
 import useUser from "@/hooks/useUser";
+import SavedRoomsList from "@/components/SavedRoomsList";
 
 export default function Home() {
   const [roomCode, setRoomCode] = useState("");
@@ -33,10 +35,13 @@ export default function Home() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 🔥 NEW: My Rooms state
+  const [showMyRooms, setShowMyRooms] = useState(false);
+
   const router = useRouter();
   const { user, loading } = useUser();
 
-  // 🔥 NEW: Debug authentication state
+  // Debug authentication state
   useEffect(() => {
     console.log("🔐 Auth State:", {
       loading,
@@ -58,7 +63,7 @@ export default function Home() {
   const handleGenerate = () => {
     const code = generateRoomCode();
     setRoomCode(code);
-    setError(null); // Clear any previous errors
+    setError(null);
 
     if (isRoleBased) {
       const adminKey = generateAdminKey();
@@ -89,13 +94,11 @@ export default function Home() {
   const handleCreateRoom = async () => {
     setError(null);
 
-    // 🔥 VALIDATION: Check room code
     if (!roomCode) {
       setError("Please generate a room code first");
       return;
     }
 
-    // 🔥 VALIDATION: Check user authentication
     if (!user || !user.uid) {
       setError("You must be logged in to create a room");
       console.error("❌ User not authenticated:", { user });
@@ -138,7 +141,6 @@ export default function Home() {
     } catch (error: any) {
       console.error("❌ Room creation failed:", error);
 
-      // User-friendly error messages
       let errorMessage = "Failed to create room. Please try again.";
 
       if (error.code === "permission-denied") {
@@ -153,12 +155,15 @@ export default function Home() {
     }
   };
 
-  const handleJoinRoom = () => {
-    if (!joinCode.trim()) {
+  const handleJoinRoom = (roomId?: string) => {
+    const targetRoom = roomId || joinCode.trim();
+
+    if (!targetRoom) {
       setError("Please enter a room code");
       return;
     }
-    router.push(`/room/${joinCode.trim()}`);
+
+    router.push(`/room/${targetRoom}`);
   };
 
   const handleRoleToggle = (checked: boolean) => {
@@ -174,7 +179,7 @@ export default function Home() {
     }
   };
 
-  // 🔥 NEW: Show loading state
+  // Show loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-linear-to-br from-gray-900 via-black to-gray-950 flex items-center justify-center text-white">
@@ -186,7 +191,7 @@ export default function Home() {
     );
   }
 
-  // 🔥 NEW: Show error if not authenticated
+  // Show error if not authenticated
   if (!user) {
     return (
       <div className="min-h-screen bg-linear-to-br from-gray-900 via-black to-gray-950 flex items-center justify-center text-white p-6">
@@ -210,7 +215,25 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-gray-900 via-black to-gray-950 flex items-center justify-center p-6 text-white">
+    <div className="min-h-screen bg-linear-to-br from-gray-900 via-black to-gray-950 flex items-center justify-center p-6 text-white relative">
+      {/* 🔥 NEW: My Rooms Button - Top Left */}
+      <button
+        onClick={() => setShowMyRooms(true)}
+        className="absolute top-6 left-6 flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors z-10"
+      >
+        <Folder className="w-5 h-5 text-blue-400" />
+        <span className="font-semibold text-white">My Rooms</span>
+      </button>
+
+      {/* 🔥 NEW: My Rooms Modal */}
+      {showMyRooms && user?.uid && (
+        <SavedRoomsList
+          userId={user.uid}
+          onClose={() => setShowMyRooms(false)}
+          onJoinRoom={handleJoinRoom}
+        />
+      )}
+
       <div className="w-full max-w-6xl mx-auto">
         <div className="text-center mb-10 space-y-2">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-wide flex items-center justify-center gap-3">
@@ -223,13 +246,13 @@ export default function Home() {
             access control.
           </p>
 
-          {/* 🔥 NEW: Show user info */}
+          {/* Show user info */}
           <p className="text-gray-500 text-xs">
             Logged in as: <span className="text-blue-400">{user.email}</span>
           </p>
         </div>
 
-        {/* 🔥 NEW: Global error message */}
+        {/* Global error message */}
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-500/50 rounded-xl flex items-start gap-3">
             <AlertCircle className="text-red-400 mt-0.5" size={20} />
@@ -389,7 +412,7 @@ export default function Home() {
             />
 
             <button
-              onClick={handleJoinRoom}
+              onClick={() => handleJoinRoom()}
               disabled={!joinCode.trim()}
               className="w-full mt-7 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold rounded-lg transition flex items-center justify-center gap-2 shadow-lg shadow-purple-700/40"
             >

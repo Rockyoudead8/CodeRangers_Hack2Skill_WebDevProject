@@ -37,8 +37,15 @@
  ┣ 📂hooks
  ┃ ┗ 📜useUser.ts
  ┣ 📂lib
+ ┃ ┣ 📂validation
+ ┃ ┃ ┣ 📜socketMiddleware.js
+ ┃ ┃ ┣ 📜socketMiddleware.ts
+ ┃ ┃ ┣ 📜socketSchemas.js
+ ┃ ┃ ┗ 📜socketSchemas.ts
  ┃ ┣ 📜firebase.ts
  ┃ ┗ 📜roomService.ts
  ┣ 📂utils
  ┃ ┗ 📜user.js
  ┗ 📜proxy.ts
+
+ vs3DuNore2R4cxPY
