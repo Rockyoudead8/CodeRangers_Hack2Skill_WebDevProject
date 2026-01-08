@@ -13,6 +13,10 @@ import IBoard from './IBoard';
 
 import { saveBoard, subscribeToBoard } from "@/lib/roomService";
 
+// for the audio functionality
+import { Room, RoomEvent } from "livekit-client";
+
+
 // ==========================================
 // 1. TYPES & HELPER FUNCTIONS (Outside Component)
 // ==========================================
@@ -138,26 +142,26 @@ function isCircle(points: Point[]) {
 
   const perimeter = strokeLength(points);
   const area = (box.width / 2) * (box.height / 2) * Math.PI;
-  
+
   // Circularity (Isoperimetric Quotient) = (4 * PI * Area) / Perimeter^2
   const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-  
+
   return circularity > 0.7;
 }
 
 function isRectangle(points: Point[]) {
   const box = getBoundingBox(points);
   if (box.width < 20 || box.height < 20) return false;
-  
+
   const perimeter = strokeLength(points);
   const rectPerimeter = 2 * (box.width + box.height);
-  
+
   // Check if stroke length matches a rectangle's perimeter
   const perimeterMatch = Math.abs(perimeter - rectPerimeter) / rectPerimeter;
-  
+
   // Simplified points should represent corners
   const pts = simplify(points, 10);
-  
+
   return perimeterMatch < 0.2 && pts.length >= 4 && pts.length <= 8;
 }
 
@@ -278,11 +282,11 @@ const invertHex = (hex: string) => {
 export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const { theme } = useTheme();
   const isDarkMode = theme === "dark";
-  
+
   useEffect(() => {
     requestAnimationFrame(() => redrawCanvas(strokes));
   }, [theme]);
-  
+
   const router = useRouter();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -296,6 +300,10 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const panStartRef = useRef({ x: 0, y: 0 });
   const currentPoints = useRef<Point[]>([]);
   const hasCenteredRef = useRef(false);
+
+  // for the audio functionality
+  const livekitRoomRef = useRef<Room | null>(null);
+  const [isInCall, setIsInCall] = useState(false);
 
   const [selectedTool, setSelectedTool] = useState<Stroke["tool"]>("pencil");
   const [selectedColor, setSelectedColor] = useState('#000000');
@@ -391,6 +399,83 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
     return canvas.toDataURL("image/png");
   };
+
+
+  // for the audio functionality
+  const identity =
+    userEmail ??
+    `guest-${Math.random().toString(36).slice(2, 8)}`;
+
+  console.log("JOIN AUDIO WITH IDENTITY:", identity);
+
+  const joinAudioRoom = async () => {
+    try {
+      const res = await fetch("/api/livekit/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId,
+          userEmail: identity,
+        }),
+      });
+
+      const { token, url } = await res.json();
+
+      console.log("TOKEN : ", typeof token);
+      console.log("token value :", token);
+      const room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+      });
+
+      livekitRoomRef.current = room;
+
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === "audio") {
+          const audio = track.attach();
+          audio.autoplay = true;
+          document.body.appendChild(audio);
+        }
+      });
+
+      await room.connect(url, token);
+
+      room.on("trackSubscribed", (track, publication, participant) => {
+        if (track.kind === "audio") {
+          const audioEl = track.attach();
+          audioEl.autoplay = true;
+          document.body.appendChild(audioEl);
+
+          console.log(
+            "🔊 Audio track subscribed from:",
+            participant.identity
+          );
+        }
+      });
+
+
+      // Request mic
+      await room.localParticipant.setMicrophoneEnabled(true);
+
+      setIsInCall(true);
+      toast.success("🎙️ Audio connected");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to join audio");
+    }
+  };
+
+
+  const leaveAudioRoom = () => {
+    if (!livekitRoomRef.current) return;
+
+    livekitRoomRef.current.disconnect();
+    livekitRoomRef.current = null;
+    setIsInCall(false);
+
+    toast("🔇 Left audio call");
+  };
+
 
   const summarizeEntireBoard = async () => {
     try {
@@ -1050,9 +1135,9 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   };
 
   const displayColor = isDarkMode
-  ? invertHex(selectedColor)
-  : selectedColor;
-  
+    ? invertHex(selectedColor)
+    : selectedColor;
+
   return (
     <div className="min-h-screen flex flex-col font-sans
       bg-gray-50 text-gray-900
@@ -1143,6 +1228,21 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             {loadingSummary ? "Processing..." : "AI Full Board Summary"}
           </button>
 
+          {/* UI for the audio functionality */}
+          <button
+            onClick={isInCall ? leaveAudioRoom : joinAudioRoom}
+            className={`
+    px-4 py-2 rounded-lg font-medium
+    ${isInCall
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-green-600 hover:bg-green-700"}
+    text-white
+  `}
+          >
+            {isInCall ? "Leave Audio" : "Join Audio"}
+          </button>
+
+
         </div>
       </header>
 
@@ -1229,11 +1329,11 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           {/* TOOLS */}
           <div className="flex flex-row gap-1.5">
             {[
-              { id: 'pencil', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg> },
-              { id: 'line', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="19" x2="19" y2="5"/></svg> },
-              { id: 'rect', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> },
-              { id: 'circle', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg> },
-              { id: 'eraser', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg> },
+              { id: 'pencil', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg> },
+              { id: 'line', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="19" x2="19" y2="5" /></svg> },
+              { id: 'rect', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /></svg> },
+              { id: 'circle', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /></svg> },
+              { id: 'eraser', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg> },
             ].map((t) => (
               <button
                 key={t.id}
@@ -1283,7 +1383,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
             title="Upload Image"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
           </button>
 
           <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
@@ -1291,28 +1391,28 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
           {/* ACTIONS */}
           <div className="flex flex-row gap-1">
             <button onClick={undo} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Undo">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
             </button>
 
             <button onClick={redo} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Redo">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" /></svg>
             </button>
 
             <button onClick={handleFitView} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Fit">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
             </button>
 
             <button onClick={clearCanvas} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg" title="Clear">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
             </button>
           </div>
         </aside>
 
 
         <div className="fixed z-80 bottom-6 left-4">
-  <button
-    onClick={() => setIsToolbarVisible(!isToolbarVisible)}
-    className="
+          <button
+            onClick={() => setIsToolbarVisible(!isToolbarVisible)}
+            className="
       flex items-center justify-center
       w-10 h-10
       rounded-full
@@ -1325,41 +1425,41 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       dark:bg-black dark:border-gray-700 dark:text-gray-300
       dark:hover:bg-gray-800
     "
-    title={isToolbarVisible ? 'Hide Toolbar' : 'Show Toolbar'}
-  >
-    {isToolbarVisible ? (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="-rotate-90"
-      >
-        <path d="m15 18-6-6 6-6" />
-      </svg>
-    ) : (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="-rotate-90"
-      >
-        <path d="m9 18 6-6-6-6" />
-      </svg>
-    )}
-  </button>
-</div>
+            title={isToolbarVisible ? 'Hide Toolbar' : 'Show Toolbar'}
+          >
+            {isToolbarVisible ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="-rotate-90"
+              >
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="-rotate-90"
+              >
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            )}
+          </button>
+        </div>
 
 
 
