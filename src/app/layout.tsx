@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
 import { Poppins } from "next/font/google";
-import Navbar from "../../components/Navbar";
+import "./globals.css";
+import { ThemeProvider } from "next-themes";
+import LayoutShell from "../../components/LayoutShell";
+
 const poppins = Poppins({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700", "800"],
@@ -25,17 +27,23 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased ${poppins.className}`}>
-        <Navbar />
-        <div className="pt-20">
-          {children}
-        </div>
-        
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased ${poppins.className}`}
+      >
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+        >
+          <LayoutShell>
+            {children}
+          </LayoutShell>
+        </ThemeProvider>
       </body>
     </html>
   );

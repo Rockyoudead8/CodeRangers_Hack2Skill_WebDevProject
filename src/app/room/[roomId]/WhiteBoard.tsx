@@ -4,6 +4,7 @@
 // import { useRouter } from 'next/navigation';
 // import { signOut } from "firebase/auth";
 // import { auth } from "@/lib/firebase";
+// import { useTheme } from "next-themes";
 
 // import toast from 'react-hot-toast';
 // import { socket } from '../../lib/socket';
@@ -11,6 +12,10 @@
 // import IBoard from './IBoard';
 
 // import { saveBoard, subscribeToBoard } from "@/lib/roomService";
+
+// // for the audio functionality
+// import { Room, RoomEvent } from "livekit-client";
+
 
 // // ==========================================
 // // 1. TYPES & HELPER FUNCTIONS (Outside Component)
@@ -45,13 +50,13 @@
 // }
 
 
-// function simplify(points: any[], epsilon = 2) {
+// function simplify(points: Point[], epsilon = 2): Point[] {
 //   if (points.length < 3) return points;
 
-//   const distToLine = (p: any, a: any, b: any) => {
+//   const distToLine = (p: Point, a: Point, b: Point) => {
 //     const num = Math.abs((b.y - a.y) * p.x - (b.x - a.x) * p.y + b.x * a.y - b.y * a.x);
 //     const den = Math.sqrt((b.y - a.y) ** 2 + (b.x - a.x) ** 2);
-//     return num / den;
+//     return den === 0 ? 0 : num / den;
 //   };
 
 //   let maxDist = 0;
@@ -66,15 +71,15 @@
 //   }
 
 //   if (maxDist > epsilon) {
-//     const left = simplify(points.slice(0, index + 1), epsilon);
-//     const right = simplify(points.slice(index), epsilon);
+//     const left: Point[] = simplify(points.slice(0, index + 1), epsilon);
+//     const right: Point[] = simplify(points.slice(index), epsilon);
 //     return left.slice(0, -1).concat(right);
 //   }
 
 //   return [points[0], points[points.length - 1]];
 // }
 
-// function strokeLength(points: any[]) {
+// function strokeLength(points: Point[]) {
 //   let len = 0;
 //   for (let i = 1; i < points.length; i++) {
 //     len += Math.hypot(
@@ -85,19 +90,19 @@
 //   return len;
 // }
 
-// function isClosed(points: any) {
+// function isClosed(points: Point[]) {
 //   const start = points[0];
 //   const end = points[points.length - 1];
-//   return Math.hypot(end.x - start.x, end.y - start.y) < 25;
+//   return Math.hypot(end.x - start.x, end.y - start.y) < 35;
 // }
 
 
-// // ================== SHAPE DETECTION BRAIN ==================
+// // ================== SHAPE DETECTION BRAIN (IMPROVED) ==================
 
-// function getBoundingBox(points: any) {
+// function getBoundingBox(points: Point[]) {
 //   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-//   points.forEach((p: any) => {
+//   points.forEach((p) => {
 //     minX = Math.min(minX, p.x);
 //     minY = Math.min(minY, p.y);
 //     maxX = Math.max(maxX, p.x);
@@ -107,51 +112,60 @@
 //   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 // }
 
-// function isLine(points: any) {
+// function isLine(points: Point[]) {
 //   if (points.length < 5) return false;
 
-//   const { minX, maxX, minY, maxY } = getBoundingBox(points);
-//   const dx = maxX - minX;
-//   const dy = maxY - minY;
+//   const { width, height } = getBoundingBox(points);
+//   const length = Math.sqrt(width * width + height * height);
+//   if (length < 30) return false;
 
-//   const length = Math.sqrt(dx * dx + dy * dy);
-//   if (length < 20) return false; // ignore tiny noise
-
-//   // check deviation
 //   const start = points[0];
 //   const end = points[points.length - 1];
 
 //   let maxDeviation = 0;
-//   points.forEach((p: any) => {
+//   points.forEach((p) => {
 //     const numerator = Math.abs((end.y - start.y) * p.x - (end.x - start.x) * p.y + end.x * start.y - end.y * start.x);
 //     const denom = Math.sqrt((end.y - start.y) ** 2 + (end.x - start.x) ** 2);
-//     const dist = numerator / denom;
+//     const dist = denom === 0 ? 0 : numerator / denom;
 //     maxDeviation = Math.max(maxDeviation, dist);
 //   });
 
-//   return maxDeviation < 4;
+//   return maxDeviation < (length * 0.05); // Deviation relative to length
 // }
 
-// function isCircle(points: any) {
+// function isCircle(points: Point[]) {
 //   if (points.length < 10) return false;
 
-//   const { width, height } = getBoundingBox(points);
-//   const ratio = width / height;
+//   const box = getBoundingBox(points);
+//   const ratio = box.width / box.height;
+//   if (ratio < 0.75 || ratio > 1.25) return false;
 
-//   if (ratio < 0.85 || ratio > 1.15) return false;
+//   const perimeter = strokeLength(points);
+//   const area = (box.width / 2) * (box.height / 2) * Math.PI;
 
-//   return true;
+//   // Circularity (Isoperimetric Quotient) = (4 * PI * Area) / Perimeter^2
+//   const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+
+//   return circularity > 0.7;
 // }
 
+// function isRectangle(points: Point[]) {
+//   const box = getBoundingBox(points);
+//   if (box.width < 20 || box.height < 20) return false;
 
-// function isRectangle(points: any) {
-//   const pts = simplify(points, 5);
-//   return pts.length === 4;
+//   const perimeter = strokeLength(points);
+//   const rectPerimeter = 2 * (box.width + box.height);
+
+//   // Check if stroke length matches a rectangle's perimeter
+//   const perimeterMatch = Math.abs(perimeter - rectPerimeter) / rectPerimeter;
+
+//   // Simplified points should represent corners
+//   const pts = simplify(points, 10);
+
+//   return perimeterMatch < 0.2 && pts.length >= 4 && pts.length <= 8;
 // }
 
-
-
-// function makeLineStroke(points: any, color: any, width: any) {
+// function makeLineStroke(points: Point[], color: string, width: number): Stroke {
 //   return {
 //     id: Date.now().toString(),
 //     tool: "line",
@@ -161,7 +175,7 @@
 //   };
 // }
 
-// function makeCircleStroke(points: any, color: any, width: any) {
+// function makeCircleStroke(points: Point[], color: string, width: number): Stroke {
 //   const { minX, minY, width: w, height: h } = getBoundingBox(points);
 //   const center = { x: minX + w / 2, y: minY + h / 2 };
 //   const radiusPoint = { x: center.x + w / 2, y: center.y };
@@ -175,7 +189,7 @@
 //   };
 // }
 
-// function makeRectStroke(points: any, color: any, width: any) {
+// function makeRectStroke(points: Point[], color: string, width: number): Stroke {
 //   const { minX, minY, maxX, maxY } = getBoundingBox(points);
 
 //   return {
@@ -190,8 +204,6 @@
 //   };
 // }
 
-
-
 // // Helper: Calculate distance from a point (mouse) to a line segment (stroke)
 // function pointToSegmentDistance(p: Point, v: Point, w: Point) {
 //   const l2 = (v.x - w.x) ** 2 + (v.y - w.y) ** 2;
@@ -202,17 +214,16 @@
 // }
 
 // // Helper: Draws strokes onto ANY context (Screen or Save File)
-// const renderStrokesToContext = (ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
+// const renderStrokesToContext = (ctx: CanvasRenderingContext2D, strokes: Stroke[], isDarkMode: boolean) => {
 //   strokes.forEach(stroke => {
 //     ctx.beginPath();
 
-//     // Setup Style
 //     if (stroke.tool === 'eraser') {
 //       ctx.globalCompositeOperation = 'destination-out';
 //       ctx.lineWidth = stroke.width;
 //     } else {
 //       ctx.globalCompositeOperation = 'source-over';
-//       ctx.strokeStyle = stroke.color;
+//       ctx.strokeStyle = resolveStrokeColor(stroke.color, isDarkMode);
 //       ctx.lineWidth = stroke.width;
 //     }
 
@@ -222,23 +233,19 @@
 //     const p = stroke.points;
 //     if (!p || p.length === 0) return;
 
-//     // ✏️ PENCIL / ERASER
 //     if (stroke.tool === 'pencil' || stroke.tool === 'eraser') {
 //       ctx.moveTo(p[0].x, p[0].y);
 //       p.forEach(point => ctx.lineTo(point.x, point.y));
 //     }
-//     // 📏 LINE
 //     else if (stroke.tool === 'line') {
 //       ctx.moveTo(p[0].x, p[0].y);
 //       ctx.lineTo(p[p.length - 1].x, p[p.length - 1].y);
 //     }
-//     // 🟦 RECTANGLE
 //     else if (stroke.tool === 'rect') {
 //       const start = p[0];
 //       const end = p[p.length - 1];
 //       ctx.rect(start.x, start.y, end.x - start.x, end.y - start.y);
 //     }
-//     // ⭕ CIRCLE
 //     else if (stroke.tool === 'circle') {
 //       const start = p[0];
 //       const end = p[p.length - 1];
@@ -250,28 +257,63 @@
 //   });
 // };
 
+// function resolveStrokeColor(color: string, isDark: boolean) {
+//   if (!isDark) return color;
+
+//   const c = color.trim().toLowerCase();
+
+//   if (c === "#000" || c === "#000000") return "#ffffff";
+//   if (c === "#fff" || c === "#ffffff") return "#000000";
+
+//   return color;
+// }
+
+// const invertHex = (hex: string) => {
+//   if (hex.toLowerCase() === "#000000") return "#ffffff";
+//   if (hex.toLowerCase() === "#ffffff") return "#000000";
+//   return hex; // keep all other colors untouched
+// };
+
+
 // // ==========================================
 // // 2. MAIN COMPONENT
 // // ==========================================
 
 // export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
+//   const { theme } = useTheme();
+//   const isDarkMode = theme === "dark";
+
+//   useEffect(() => {
+//     requestAnimationFrame(() => redrawCanvas(strokes));
+//   }, [theme]);
 
 //   const router = useRouter();
 
-//   // Refs
 //   const canvasRef = useRef<HTMLCanvasElement>(null);
 //   const containerRef = useRef<HTMLDivElement>(null);
 //   const userIdRef = useRef(userEmail);
 //   const fileInputRef = useRef<HTMLInputElement>(null);
 //   const hasLoadedFromDB = useRef(false);
 //   const latestDataRef = useRef({ strokes: [], boards: [], images: [] });
-//   const strokesRef = useRef<Stroke[]>([]); // "Live" mirror for eraser logic
+//   const strokesRef = useRef<Stroke[]>([]);
 //   const itemRefs = useRef<any>({});
 //   const panStartRef = useRef({ x: 0, y: 0 });
 //   const currentPoints = useRef<Point[]>([]);
 //   const hasCenteredRef = useRef(false);
 
-//   // UI State
+
+//   // for the audio functionality
+//   const livekitRoomRef = useRef<Room | null>(null);
+//   const [isInCall, setIsInCall] = useState(false);
+
+//   // for muting and unmuting the user
+//   const [isMuted, setIsMuted] = useState(false);
+//   const roomRef = useRef<Room | null>(null);
+
+//   // for showing who is speaking
+//   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
+
+
 //   const [selectedTool, setSelectedTool] = useState<Stroke["tool"]>("pencil");
 //   const [selectedColor, setSelectedColor] = useState('#000000');
 //   const [brushSize, setBrushSize] = useState(2);
@@ -280,23 +322,19 @@
 //   const [isModalOpen, setIsModalOpen] = useState(false);
 //   const [newBoardTitle, setNewBoardTitle] = useState("");
 
-//   // Data State
 //   const [strokes, setStrokes] = useState<Stroke[]>([]);
 //   const [boards, setBoards] = useState<BoardData[]>([]);
 //   const [images, setImages] = useState<BoardData[]>([]);
 //   const [users, setUsers] = useState<any[]>([]);
 
-//   // 🎥 CAMERA STATE
 //   const [camera, setCamera] = useState({ x: 0, y: 0, zoom: 1 });
 //   const [isPanning, setIsPanning] = useState(false);
 
 //   const [aiSummary, setAiSummary] = useState<string | null>(null);
 //   const [loadingSummary, setLoadingSummary] = useState(false);
-//   // ==========================================
-//   // 3. HELPERS & RENDER ENGINE
-//   // ==========================================
 
-//   // Helper: Convert Screen Pixel -> Infinite World Coordinate
+
+
 //   const screenToWorld = (screenX: number, screenY: number) => {
 //     return {
 //       x: (screenX - camera.x) / camera.zoom,
@@ -304,7 +342,6 @@
 //     };
 //   };
 
-//   // The Main Render Function
 //   const redrawCanvas = (strokesToDraw: Stroke[]) => {
 //     const canvas = canvasRef.current;
 //     if (!canvas) return;
@@ -313,35 +350,26 @@
 
 //     const dpr = window.devicePixelRatio || 1;
 
-//     // 1. Reset Transform: clear everything, then set base scale to DPR
-//     // This fixes the "Shift to Top Left" bug
 //     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-//     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
 
-//     // 2. Apply Camera (Pan & Zoom)
+//     ctx.fillStyle = isDarkMode ? "#000000" : "#ffffff";
+//     ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
 //     ctx.translate(camera.x, camera.y);
 //     ctx.scale(camera.zoom, camera.zoom);
 
-//     // 3. Draw
-//     renderStrokesToContext(ctx, strokesToDraw);
+//     renderStrokesToContext(ctx, strokesToDraw, isDarkMode);
 //   };
 
-//   // Sync Ref with State
 //   useEffect(() => {
 //     strokesRef.current = strokes;
 //   }, [strokes]);
 
-//   // Sync Data for Save
 //   useEffect(() => {
 //     // @ts-ignore 
 //     latestDataRef.current = { strokes, boards, images };
 //   }, [strokes, boards, images]);
 
-//   // ==========================================
-//   // 4. DATABASE & SAVE LOGIC
-//   // ==========================================
-
-//   // function for doing the summary of the whole whiteboard
 //   const exportFullBoardImage = () => {
 //     if (strokes.length === 0) return null;
 
@@ -372,13 +400,104 @@
 //     const ctx = canvas.getContext("2d");
 //     if (!ctx) return null;
 
-//     ctx.fillStyle = "white";
+//     ctx.fillStyle = isDarkMode ? "#000000" : "#ffffff";
 //     ctx.fillRect(0, 0, width, height);
 
 //     ctx.translate(-minX, -minY);
-//     renderStrokesToContext(ctx, strokes);
+//     renderStrokesToContext(ctx, strokes, isDarkMode);
 
 //     return canvas.toDataURL("image/png");
+//   };
+
+
+//   // for the audio functionality
+//   const identity =
+//     userEmail ??
+//     `guest-${Math.random().toString(36).slice(2, 8)}`;
+
+//   console.log("JOIN AUDIO WITH IDENTITY:", identity);
+
+//   // for the toggle mute and unmute
+//   const toggleMute = async () => {
+//     if (!roomRef.current) return;
+
+//     const lp = roomRef.current.localParticipant;
+
+//     if (isMuted) {
+//       await lp.setMicrophoneEnabled(true);
+//     } else {
+//       await lp.setMicrophoneEnabled(false);
+//     }
+
+//     setIsMuted(!isMuted);
+//   };
+
+//   const joinAudioRoom = async () => {
+//     try {
+//       const res = await fetch("/api/livekit/token", {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify({
+//           roomId,
+//           userEmail: identity,
+//         }),
+//       });
+
+//       const { token, url } = await res.json();
+
+//       console.log("TOKEN : ", typeof token);
+//       console.log("token value :", token);
+//       const room = new Room({
+//         adaptiveStream: true,
+//         dynacast: true,
+//       });
+
+//       livekitRoomRef.current = room;
+
+//       room.on(RoomEvent.TrackSubscribed, (track) => {
+//         if (track.kind === "audio") {
+//           const audio = track.attach();
+//           audio.autoplay = true;
+//           document.body.appendChild(audio);
+//         }
+//       });
+
+//       await room.connect(url, token);
+
+//       room.on("trackSubscribed", (track, publication, participant) => {
+//         if (track.kind === "audio") {
+//           const audioEl = track.attach();
+//           audioEl.autoplay = true;
+//           document.body.appendChild(audioEl);
+
+//           console.log(
+//             "🔊 Audio track subscribed from:",
+//             participant.identity
+//           );
+//         }
+//       });
+
+
+//       // Request mic
+//       await room.localParticipant.setMicrophoneEnabled(true);
+
+//       setIsInCall(true);
+//       toast.success("🎙️ Audio connected");
+//     } catch (err) {
+//       console.error(err);
+//       toast.error("Failed to join audio");
+//     }
+//   };
+
+
+//   const leaveAudioRoom = () => {
+//     if (!livekitRoomRef.current) return;
+
+//     livekitRoomRef.current.disconnect();
+//     livekitRoomRef.current = null;
+//     setIsInCall(false);
+
+//     toast("🔇 Left audio call");
 //   };
 
 
@@ -405,13 +524,11 @@
 //     }
 //   };
 
-
 //   function getViewportImage(canvasRef: any) {
 //     const canvas = canvasRef.current;
 //     if (!canvas) return null;
 
 //     const rect = canvas.getBoundingClientRect();
-
 //     const viewWidth = window.innerWidth;
 //     const viewHeight = window.innerHeight;
 
@@ -422,15 +539,12 @@
 //     const ctx = tempCanvas.getContext("2d");
 //     if (!ctx) return null;
 
-//     ctx.fillStyle = "white";
+//     ctx.fillStyle = isDarkMode ? "#000000" : "#ffffff";
 //     ctx.fillRect(0, 0, viewWidth, viewHeight);
-
 //     ctx.drawImage(canvas, -rect.left, -rect.top);
 
 //     return tempCanvas.toDataURL("image/png");
 //   }
-
-
 
 //   const summarizeBoard = async () => {
 //     try {
@@ -455,14 +569,12 @@
 //     }
 //   };
 
-
 //   const handleSaveToDrive = async () => {
 //     try {
 //       const token = localStorage.getItem("drive_token");
 //       if (!token) return alert("Login again with Google");
 //       if (strokes.length === 0) return alert("Canvas is empty!");
 
-//       // 1. Calculate Bounding Box
 //       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 //       strokes.forEach(s => {
 //         s.points.forEach(p => {
@@ -479,22 +591,18 @@
 //       const width = maxX - minX;
 //       const height = maxY - minY;
 
-//       // 2. Create Virtual Canvas
 //       const tempCanvas = document.createElement('canvas');
 //       tempCanvas.width = width;
 //       tempCanvas.height = height;
 //       const ctx = tempCanvas.getContext('2d');
 //       if (!ctx) return;
 
-//       // 3. Fill & Shift
 //       ctx.fillStyle = '#ffffff';
 //       ctx.fillRect(0, 0, width, height);
 //       ctx.translate(-minX, -minY);
 
-//       // 4. Draw
-//       renderStrokesToContext(ctx, strokes);
+//       renderStrokesToContext(ctx, strokes, isDarkMode);
 
-//       // 5. Upload
 //       const blob = await new Promise<Blob>((resolve) => tempCanvas.toBlob((b) => resolve(b!), "image/png"));
 //       const metadata = { name: `whiteboard-${roomId}.png`, mimeType: "image/png" };
 //       const form = new FormData();
@@ -521,7 +629,6 @@
 //     if (!hasLoadedFromDB.current && data.strokes && Array.isArray(data.strokes)) {
 //       if (data.strokes.length > 0) {
 //         setStrokes(data.strokes as Stroke[]);
-
 //         requestAnimationFrame(() => redrawCanvas(data.strokes));
 //       }
 //       hasLoadedFromDB.current = true;
@@ -546,22 +653,16 @@
 //     return () => unsub();
 //   }, [roomId]);
 
-//   // ==========================================
-//   // 🔭 FIXED ZOOM & PAN HANDLER (Non-Passive)
-//   // ==========================================
 //   useEffect(() => {
 //     const container = containerRef.current;
 //     if (!container) return;
 
 //     const onWheel = (e: WheelEvent) => {
-//       // 🛑 PREVENT BROWSER NATIVE ZOOM
 //       if (e.ctrlKey || e.metaKey) {
 //         e.preventDefault();
 //       }
 
-//       // LOGIC: Zoom or Pan
 //       if (e.ctrlKey || e.metaKey) {
-//         // ZOOM
 //         const zoomSensitivity = 0.001;
 //         const delta = -e.deltaY * zoomSensitivity;
 //         const newZoom = Math.min(Math.max(camera.zoom + delta, 0.1), 5);
@@ -570,17 +671,14 @@
 //         const mouseX = e.clientX - rect.left;
 //         const mouseY = e.clientY - rect.top;
 
-//         // Calculate World Mouse based on OLD zoom
 //         const worldX = (mouseX - camera.x) / camera.zoom;
 //         const worldY = (mouseY - camera.y) / camera.zoom;
 
-//         // Calculate New Camera to keep mouse in same spot
 //         const newCamX = mouseX - worldX * newZoom;
 //         const newCamY = mouseY - worldY * newZoom;
 
 //         setCamera({ x: newCamX, y: newCamY, zoom: newZoom });
 //       } else {
-//         // PAN (Scroll Wheel)
 //         setCamera(prev => ({
 //           ...prev,
 //           x: prev.x - e.deltaX,
@@ -590,22 +688,11 @@
 //       requestAnimationFrame(() => redrawCanvas(strokes));
 //     };
 
-//     // { passive: false } is REQUIRED to stop browser zoom
 //     container.addEventListener('wheel', onWheel, { passive: false });
-
-//     return () => {
-//       container.removeEventListener('wheel', onWheel);
-//     };
-//   }, [camera, strokes]); // Re-bind when camera changes to keep math accurate
-
-//   // ==========================================
-//   // 5. INPUT HANDLERS (MOUSE & WHEEL)
-//   // ==========================================
-
-
+//     return () => container.removeEventListener('wheel', onWheel);
+//   }, [camera, strokes]);
 
 //   const startDrawing = (e: React.MouseEvent | MouseEvent) => {
-//     // Middle Mouse or Spacebar = PAN
 //     if (e.button === 1 || (e as any).code === 'Space') {
 //       setIsPanning(true);
 //       panStartRef.current = { x: e.clientX, y: e.clientY };
@@ -617,14 +704,12 @@
 
 //     setIsDrawing(true);
 //     const rect = canvas.getBoundingClientRect();
-//     // 🚀 Convert to World Coords
 //     const worldPos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
 
 //     currentPoints.current = [{ x: worldPos.x, y: worldPos.y }];
 //   };
 
 //   const draw = (e: React.MouseEvent | MouseEvent) => {
-//     // A. PANNING
 //     if (isPanning) {
 //       const dx = e.clientX - panStartRef.current.x;
 //       const dy = e.clientY - panStartRef.current.y;
@@ -638,14 +723,10 @@
 //     const canvas = canvasRef.current;
 //     if (!canvas) return;
 //     const rect = canvas.getBoundingClientRect();
-
-//     // 🚀 World Coords
 //     const mouse = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
 
-//     // B. ERASER
 //     if (selectedTool === 'eraser') {
-//       const hitThreshold = 10 / camera.zoom; // Scale threshold with zoom
-
+//       const hitThreshold = 10 / camera.zoom;
 //       const strokeIdToDelete = strokesRef.current.find(stroke => {
 //         const p = stroke.points;
 //         if (!p || p.length < 2) return false;
@@ -685,7 +766,6 @@
 //       return;
 //     }
 
-//     // C. PENCIL & SHAPES
 //     if (selectedTool === 'pencil') {
 //       currentPoints.current.push(mouse);
 //       const previewStroke: Stroke = { id: 'temp', tool: 'pencil', color: selectedColor, width: brushSize, points: currentPoints.current };
@@ -709,42 +789,31 @@
 //     const rawPoints = [...currentPoints.current];
 //     currentPoints.current = [];
 
-//     // If not pencil, store normally
 //     if (selectedTool !== "pencil") {
-//       const stroke = {
+//       const stroke: Stroke = {
 //         id: Date.now().toString(),
 //         tool: selectedTool,
 //         color: selectedColor,
 //         width: brushSize,
 //         points: rawPoints
 //       };
-
-//       const updated = [...strokes, stroke];
-//       setStrokes(updated);
-//       socket.emit("draw", { roomId, stroke });
-//       triggerSave();
+//       save(stroke);
 //       return;
 //     }
 
-//     // ===== AUTO SHAPE MAGIC (Better Version) =====
 //     let points = simplify(rawPoints);
-
-//     // Reject tiny strokes
-//     if (strokeLength(points) < 120) {
+//     if (strokeLength(points) < 80) {
 //       saveNormal();
 //       return;
 //     }
 
-//     // Decide based on closed or not
 //     if (!isClosed(points)) {
-//       // Only check LINE
 //       if (isLine(points)) {
 //         save(makeLineStroke(points, selectedColor, brushSize));
 //       } else {
 //         saveNormal();
 //       }
 //     } else {
-//       // Closed → try circle or rectangle
 //       if (isCircle(points)) {
 //         save(makeCircleStroke(points, selectedColor, brushSize));
 //       }
@@ -756,7 +825,7 @@
 //       }
 //     }
 
-//     function save(stroke: any) {
+//     function save(stroke: Stroke) {
 //       const updated = [...strokes, stroke];
 //       setStrokes(updated);
 //       socket.emit("draw", { roomId, stroke });
@@ -764,7 +833,7 @@
 //     }
 
 //     function saveNormal() {
-//       const normal = {
+//       const normal: Stroke = {
 //         id: Date.now().toString(),
 //         tool: "pencil",
 //         color: selectedColor,
@@ -773,29 +842,12 @@
 //       };
 //       save(normal);
 //     }
-
-
-//     const finalStroke = correctedStroke || {
-//       id: Date.now().toString(),
-//       tool: "pencil",
-//       color: selectedColor,
-//       width: brushSize,
-//       points: rawPoints
-//     };
-
-//     const updated = [...strokes, finalStroke];
-//     setStrokes(updated);
-//     socket.emit("draw", { roomId, stroke: finalStroke });
-//     triggerSave();
 //   };
-
 
 //   const undo = () => socket.emit('undo', { roomId });
 //   const redo = () => socket.emit('redo', { roomId });
 
-//   //Zoom to fit
 //   const handleFitView = () => {
-//     // 1. If empty, reset to World Center
 //     if (strokes.length === 0) {
 //       setCamera({ x: 0, y: 0, zoom: 1 });
 //       requestAnimationFrame(() => redrawCanvas(strokes));
@@ -803,9 +855,7 @@
 //       return;
 //     }
 
-//     // 2. Calculate Bounding Box of drawings
 //     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
 //     strokes.forEach(s => {
 //       s.points.forEach(p => {
 //         if (p.x < minX) minX = p.x;
@@ -815,34 +865,23 @@
 //       });
 //     });
 
-//     // 3. Get Container Dimensions
 //     const container = containerRef.current;
 //     if (!container) return;
 //     const { clientWidth: viewW, clientHeight: viewH } = container;
 
-//     // 4. Calculate Dimensions of the Drawing
 //     const drawingW = maxX - minX;
 //     const drawingH = maxY - minY;
 //     const centerX = minX + drawingW / 2;
 //     const centerY = minY + drawingH / 2;
 
-//     // 5. Determine Zoom (with 10% padding)
-//     // We assume a minimum width/height of 50 to prevent division by zero or infinite zoom on a single dot
 //     const safeW = Math.max(drawingW, 50);
 //     const safeH = Math.max(drawingH, 50);
-
 //     const scaleX = viewW / safeW;
 //     const scaleY = viewH / safeH;
 
-//     // Fit to the smallest dimension (so nothing gets cut off) * 0.9 for padding
 //     let newZoom = Math.min(scaleX, scaleY) * 0.9;
-
-//     // Clamp Zoom: Don't zoom in too close (e.g. max 2x) if drawing is tiny, 
-//     // and don't zoom out too far (e.g. min 0.1x)
 //     newZoom = Math.min(Math.max(newZoom, 0.1), 2);
 
-//     // 6. Calculate Camera Position to Center the Drawing
-//     // Formula: Camera = ScreenCenter - (WorldCenter * Zoom)
 //     const newCamX = (viewW / 2) - (centerX * newZoom);
 //     const newCamY = (viewH / 2) - (centerY * newZoom);
 
@@ -851,19 +890,10 @@
 //     toast("Canvas Focused 🔭");
 //   };
 
-
-//   //AUTO-ZOOM ON JOIN
-
 //   useEffect(() => {
-//     // Check 1: Have we already centered the camera? (If yes, stop)
 //     if (hasCenteredRef.current) return;
-
-//     // Check 2: Do we have strokes loaded?
 //     if (strokes.length > 0) {
-//       // Execute the "Zoom to Fit" logic
 //       handleFitView();
-
-//       // Mark as done so it doesn't run again
 //       hasCenteredRef.current = true;
 //     }
 //   }, [strokes]);
@@ -883,10 +913,6 @@
 //       router.push("/login");
 //     } catch (error) { console.error(error); }
 //   };
-
-//   // ==========================================
-//   // 6. SOCKET & EVENT LISTENERS
-//   // ==========================================
 
 //   useEffect(() => {
 //     const canvas = canvasRef.current;
@@ -959,7 +985,6 @@
 //     };
 //   }, [roomId, userEmail]);
 
-//   // Canvas Resizer
 //   useEffect(() => {
 //     const canvas = canvasRef.current;
 //     const container = containerRef.current;
@@ -982,16 +1007,10 @@
 //     resizeCanvas();
 //     window.addEventListener('resize', resizeCanvas);
 //     return () => window.removeEventListener('resize', resizeCanvas);
-//   }, [strokes]); // Keep strokes in dep to allow redraw on resize
-
-//   // ==========================================
-//   // 7. BOARD/IMAGE LOGIC
-//   // ==========================================
+//   }, [strokes]);
 
 //   const determineNewPosition = () => {
-//     // Center of the current VIEW
 //     if (typeof window === 'undefined') return { x: 0, y: 0 };
-//     // We add absolute position based on camera to spawn in center of screen
 //     return {
 //       x: (containerRef.current?.clientWidth || 800) / 2 - camera.x,
 //       y: (containerRef.current?.clientHeight || 600) / 2 - camera.y
@@ -1110,24 +1129,20 @@
 
 //   const handleDragStart = (item: BoardData, e: React.MouseEvent) => {
 //     e.preventDefault();
-//     e.stopPropagation(); // Stop pan from triggering
+//     e.stopPropagation();
 //     const { id } = item;
 //     const itemRef = itemRefs.current[id]?.current;
 //     if (!itemRef) return;
 
-//     // We must account for Zoom when dragging DOM elements
 //     const startX = e.clientX;
 //     const startY = e.clientY;
 //     const startPos = item.position;
 
 //     const handleMouseMove = (e: MouseEvent) => {
-//       // Calculate delta and divide by zoom to get "World Units" moved
 //       const dx = (e.clientX - startX) / camera.zoom;
 //       const dy = (e.clientY - startY) / camera.zoom;
-
 //       const newX = startPos.x + dx;
 //       const newY = startPos.y + dy;
-
 //       itemRef.style.left = `${newX}px`;
 //       itemRef.style.top = `${newY}px`;
 //     };
@@ -1135,7 +1150,6 @@
 //     const handleMouseUp = (e: MouseEvent) => {
 //       document.removeEventListener("mousemove", handleMouseMove);
 //       document.removeEventListener("mouseup", handleMouseUp);
-
 //       const dx = (e.clientX - startX) / camera.zoom;
 //       const dy = (e.clientY - startY) / camera.zoom;
 //       updateItemPosition(id, { x: startPos.x + dx, y: startPos.y + dy }, item.type);
@@ -1144,36 +1158,70 @@
 //     document.addEventListener("mouseup", handleMouseUp);
 //   };
 
-
-//   // ==========================================
-//   // 8. RENDER UI
-//   // ==========================================
+//   const displayColor = isDarkMode
+//     ? invertHex(selectedColor)
+//     : selectedColor;
 
 //   return (
-//     <div className="bg-gray-50 min-h-screen flex flex-col font-sans">
+//     <div className="min-h-screen flex flex-col font-sans
+//       bg-gray-50 text-gray-900
+//       dark:bg-black dark:text-white
+//     ">
+
 //       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
 
-//       {/* HEADER */}
-//       <header className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm z-[70] shrink-0">
+//       <header
+//         className="
+//           sticky top-0 z-70 shrink-0
+//           px-6 py-4 flex items-center justify-between
+//           backdrop-blur-lg transition-colors
+//           bg-white/80 border-b border-gray-200
+//           dark:bg-black/70 dark:border-gray-800
+//         "
+//       >
+
 //         <div className="flex flex-col">
-//           <h1 className="text-lg font-semibold text-gray-900 tracking-tight flex items-center gap-2">
+//           <h1 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
 //             Whiteboard
 //           </h1>
+
 //           <div className="flex items-center gap-2 text-xs text-gray-500">
 //             <span>Room:</span>
-//             <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-mono">{roomId}</code>
+//             <code className="
+//               px-1.5 py-0.5 rounded font-mono
+//               bg-gray-100 text-gray-700
+//               dark:bg-gray-800 dark:text-gray-300
+//             ">
+//               {roomId}
+//             </code>
+
 //           </div>
 //         </div>
 
 //         <div className="flex items-center gap-4">
 //           <div className="relative group z-50">
-//             <button className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition-colors cursor-default">
+//             <button className="
+//               flex items-center gap-2 px-3 py-1.5 rounded-full transition
+//               bg-gray-100 border border-gray-200 text-gray-700
+//               dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300
+//               cursor-default
+//             ">
 //               <span className="text-sm font-medium text-gray-600">{users.length} Online</span>
 //             </button>
-//             <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 p-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+//             <div className="
+//               absolute right-0 top-full mt-2 w-48 p-2 rounded-xl shadow-xl
+//               bg-white border border-gray-200
+//               dark:bg-gray-900 dark:border-gray-700
+//               opacity-0 invisible group-hover:opacity-100 group-hover:visible
+//               transition-all duration-200
+//             ">
+
 //               <ul className="flex flex-col gap-1 overflow-y-auto max-h-40">
 //                 {users.map((user, i) => (
-//                   <li key={i} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg">
+//                   <li key={i} className="
+//                     flex items-center gap-2 px-2 py-1.5 rounded-lg
+//                     hover:bg-gray-100 dark:hover:bg-gray-800
+//                   ">
 //                     <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold bg-blue-500">
 //                       {user.id ? user.id.charAt(0).toUpperCase() : '?'}
 //                     </div>
@@ -1183,6 +1231,22 @@
 //               </ul>
 //             </div>
 //           </div>
+//           <button
+//             onClick={toggleMute}
+//             style={{
+
+//               bottom: 20,
+//               right: 20,
+//               padding: "12px 18px",
+//               borderRadius: "999px",
+//               background: isMuted ? "#ff4d4f" : "#2ecc71",
+//               color: "white",
+//               fontWeight: 600,
+//               cursor: "pointer",
+//             }}
+//           >
+//             {isMuted ? "🔇 Muted" : "🎤 Live"}
+//           </button>
 //           <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-gray-900 hover:bg-black text-white text-sm font-medium px-4 py-2 rounded-lg">
 //             Add Board
 //           </button>
@@ -1204,12 +1268,29 @@
 //             {loadingSummary ? "Processing..." : "AI Full Board Summary"}
 //           </button>
 
+//           {/* UI for the audio functionality */}
+//           <button
+//             onClick={isInCall ? leaveAudioRoom : joinAudioRoom}
+//             className={`
+//     px-4 py-2 rounded-lg font-medium
+//     ${isInCall
+//                 ? "bg-red-600 hover:bg-red-700"
+//                 : "bg-green-600 hover:bg-green-700"}
+//     text-white
+//   `}
+//           >
+//             {isInCall ? "Leave Audio" : "Join Audio"}
+//           </button>
+
+
+
 //         </div>
+
+
 //       </header>
 
-//       {/* MODAL */}
 //       {isModalOpen && (
-//         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+//         <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
 //           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-gray-100 scale-100 animate-in fade-in zoom-in-95 duration-200">
 //             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
 //               <h3 className="text-lg font-semibold text-gray-900">New Board</h3>
@@ -1226,14 +1307,12 @@
 //         </div>
 //       )}
 
-//       {/* MAIN CONTENT (INFINITE CANVAS) */}
 //       <div
 //         ref={containerRef}
 //         className="relative flex-1 w-full bg-white cursor-crosshair overflow-hidden"
 //       >
 //         <canvas ref={canvasRef} className="absolute top-0 left-0 block w-full h-full" />
 
-//         {/* HTML LAYER TRANSFORMED BY CAMERA */}
 //         <div
 //           className="absolute inset-0 z-10 w-full h-full pointer-events-none origin-top-left will-change-transform"
 //           style={{
@@ -1272,100 +1351,168 @@
 //           ))}
 //         </div>
 
-//         {/* TOOLBAR */}
 //         <aside
 //           className={`
-//             fixed z-[80] bg-white/95 backdrop-blur-sm shadow-xl border border-gray-200/60 p-3 flex gap-5 transition-all duration-300 ease-in-out rounded-full flex-row items-center
-            
-//             ${/* MOBILE: Bottom Center & Slide Down */ ''}
+//             fixed z-80
 //             bottom-6 left-1/2 -translate-x-1/2
-//             ${isToolbarVisible ? 'translate-y-0 opacity-100' : 'translate-y-[200%] opacity-0'}
+//             px-4 py-3
+//             flex flex-row items-center gap-5
+//             rounded-full
+//             backdrop-blur-lg
+//             shadow-xl
+//             border
+//             transition-all duration-300 ease-in-out
 
-//             ${/* DESKTOP: Top Left & Slide Left */ ''}
-//             md:top-28 md:left-4 md:bottom-auto
-//             md:translate-y-0  ${/* Stops it from sliding down on desktop */ ''}
-//             ${isToolbarVisible ? 'md:translate-x-0' : 'md:-translate-x-[150%]'}
+//             bg-white/90 border-gray-200
+//             dark:bg-black/80 dark:border-gray-700
 
-//             ${/* SHAPE: Rounded Square on Desktop */ ''}
-//             md:rounded-2xl md:flex-col md:items-start
+//             ${isToolbarVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-20 pointer-events-none'}
 //           `}
 //         >
-//           {/* ... (Your buttons inside remain exactly the same) ... */}
-
-//           <div className="flex md:flex-col flex-row gap-1.5">
+//           {/* TOOLS */}
+//           <div className="flex flex-row gap-1.5">
 //             {[
-//               { id: 'pencil', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg> },
-//               { id: 'line', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="19" x2="19" y2="5"></line></svg> },
-//               { id: 'rect', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg> },
-//               { id: 'circle', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle></svg> },
-//               { id: 'eraser', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg> },
+//               { id: 'pencil', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg> },
+//               { id: 'line', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="19" x2="19" y2="5" /></svg> },
+//               { id: 'rect', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /></svg> },
+//               { id: 'circle', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /></svg> },
+//               { id: 'eraser', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg> },
 //             ].map((t) => (
 //               <button
 //                 key={t.id}
 //                 onClick={() => setSelectedTool(t.id as any)}
-//                 className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${selectedTool === t.id ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-500'
-//                   }`}
-//                 title={t.id.charAt(0).toUpperCase() + t.id.slice(1)}
+//                 className={`p-2.5 rounded-xl flex items-center justify-center transition
+//                   ${selectedTool === t.id
+//                     ? 'bg-black text-white dark:bg-white dark:text-black'
+//                     : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}
+//                 `}
+//                 title={t.id}
 //               >
 //                 {t.icon}
 //               </button>
 //             ))}
 //           </div>
 
-//           <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+//           <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
 
-//           <div className="flex md:flex-col flex-row gap-2 items-center">
-//             <input type="color" value={selectedColor} onChange={(e) => setSelectedColor(e.target.value)} className="w-8 h-8 rounded-full border-2 border-white cursor-pointer" />
-//             <input type="range" min="1" max="20" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="md:w-1.5 md:h-20 w-20 h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer" style={{ writingMode: typeof window !== 'undefined' && window.innerWidth >= 768 ? 'vertical-lr' : 'horizontal-tb' } as any} />
+//           {/* COLOR + SIZE */}
+//           <div className="flex flex-row gap-2 items-center">
+//             <input
+//               type="color"
+//               value={displayColor}
+//               onChange={(e) => {
+//                 const picked = e.target.value;
+//                 setSelectedColor(
+//                   isDarkMode ? invertHex(picked) : picked
+//                 );
+//               }}
+//               className="w-8 h-8 rounded-full border-2 border-white cursor-pointer"
+//             />
+//             <input
+//               type="range"
+//               min="1"
+//               max="20"
+//               value={brushSize}
+//               onChange={(e) => setBrushSize(Number(e.target.value))}
+//               className="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer"
+//             />
 //           </div>
 
-//           <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+//           <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
 
-//           <button onClick={() => fileInputRef.current?.click()} className="p-1 rounded-xl flex items-center justify-center transition-all hover:bg-gray-100 text-gray-500" title="Upload Image">
-//             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+//           {/* IMAGE */}
+//           <button
+//             onClick={() => fileInputRef.current?.click()}
+//             className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
+//             title="Upload Image"
+//           >
+//             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
 //           </button>
 
-//           <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+//           <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
 
-//           <div className="flex md:flex-col flex-row gap-1">
-//             <button onClick={undo} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Undo">
-//               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
+//           {/* ACTIONS */}
+//           <div className="flex flex-row gap-1">
+//             <button onClick={undo} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Undo">
+//               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
 //             </button>
-//             <button onClick={redo} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Redo">
-//               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" /></svg>
+
+//             <button onClick={redo} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Redo">
+//               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" /></svg>
 //             </button>
-//             <button onClick={handleFitView} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Fit to Content">
-//               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
+
+//             <button onClick={handleFitView} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Fit">
+//               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
 //             </button>
-//             <button onClick={clearCanvas} className="p-2 text-red-500 hover:bg-red-50 rounded-lg" title="Clear Canvas">
-//               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+
+//             <button onClick={clearCanvas} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg" title="Clear">
+//               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
 //             </button>
 //           </div>
 //         </aside>
 
-//         {/* TOGGLE BUTTON */}
-//         <div className="fixed z-[80] bottom-24 left-4 md:left-0 md:top-28 md:bottom-auto">
+
+//         <div className="fixed z-80 bottom-6 left-4">
 //           <button
 //             onClick={() => setIsToolbarVisible(!isToolbarVisible)}
-//             className="bg-white border border-gray-200 md:border-l-0 text-gray-600 p-2 md:pr-3 rounded-full md:rounded-r-xl md:rounded-l-none shadow-md hover:bg-gray-50 transition-colors"
+//             className="
+//       flex items-center justify-center
+//       w-10 h-10
+//       rounded-full
+//       border shadow-md
+//       transition-all
+
+//       bg-white border-gray-200 text-gray-600
+//       hover:bg-gray-100
+
+//       dark:bg-black dark:border-gray-700 dark:text-gray-300
+//       dark:hover:bg-gray-800
+//     "
+//             title={isToolbarVisible ? 'Hide Toolbar' : 'Show Toolbar'}
 //           >
 //             {isToolbarVisible ? (
-//               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rotate-90 md:rotate-0"><path d="m15 18-6-6 6-6" /></svg>
+//               <svg
+//                 xmlns="http://www.w3.org/2000/svg"
+//                 width="20"
+//                 height="20"
+//                 viewBox="0 0 24 24"
+//                 fill="none"
+//                 stroke="currentColor"
+//                 strokeWidth="2"
+//                 strokeLinecap="round"
+//                 strokeLinejoin="round"
+//                 className="-rotate-90"
+//               >
+//                 <path d="m15 18-6-6 6-6" />
+//               </svg>
 //             ) : (
-//               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+//               <svg
+//                 xmlns="http://www.w3.org/2000/svg"
+//                 width="20"
+//                 height="20"
+//                 viewBox="0 0 24 24"
+//                 fill="none"
+//                 stroke="currentColor"
+//                 strokeWidth="2"
+//                 strokeLinecap="round"
+//                 strokeLinejoin="round"
+//                 className="-rotate-90"
+//               >
+//                 <path d="m9 18 6-6-6-6" />
+//               </svg>
 //             )}
 //           </button>
 //         </div>
 
+
+
 //         {aiSummary && (
-//           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]">
+//           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-9999">
 //             <div className="bg-gray-900 text-white p-6 rounded-2xl max-w-2xl w-full border border-gray-700 shadow-2xl">
 //               <h2 className="text-2xl font-bold mb-4">AI Summary</h2>
-
 //               <pre className="text-gray-300 whitespace-pre-wrap max-h-[60vh] overflow-y-auto leading-relaxed">
 //                 {aiSummary}
 //               </pre>
-
 //               <div className="flex justify-end mt-6">
 //                 <button
 //                   onClick={() => setAiSummary(null)}
@@ -1377,10 +1524,11 @@
 //             </div>
 //           </div>
 //         )}
-
 //       </div>
 //     </div>
 //   );
+
+
 // }
 
 'use client';
@@ -1389,6 +1537,7 @@ import { useEffect, useRef, useState, createRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { useTheme } from "next-themes";
 
 import toast from 'react-hot-toast';
 import { socket } from '../../lib/socket';
@@ -1396,6 +1545,10 @@ import Board from './Board';
 import IBoard from './IBoard';
 
 import { saveBoard, subscribeToBoard } from "@/lib/roomService";
+
+// for the audio functionality
+import { Room, RoomEvent, RemoteParticipant, LocalParticipant } from "livekit-client";
+
 
 // ==========================================
 // 1. TYPES & HELPER FUNCTIONS (Outside Component)
@@ -1522,26 +1675,26 @@ function isCircle(points: Point[]) {
 
   const perimeter = strokeLength(points);
   const area = (box.width / 2) * (box.height / 2) * Math.PI;
-  
+
   // Circularity (Isoperimetric Quotient) = (4 * PI * Area) / Perimeter^2
   const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-  
+
   return circularity > 0.7;
 }
 
 function isRectangle(points: Point[]) {
   const box = getBoundingBox(points);
   if (box.width < 20 || box.height < 20) return false;
-  
+
   const perimeter = strokeLength(points);
   const rectPerimeter = 2 * (box.width + box.height);
-  
+
   // Check if stroke length matches a rectangle's perimeter
   const perimeterMatch = Math.abs(perimeter - rectPerimeter) / rectPerimeter;
-  
+
   // Simplified points should represent corners
   const pts = simplify(points, 10);
-  
+
   return perimeterMatch < 0.2 && pts.length >= 4 && pts.length <= 8;
 }
 
@@ -1594,7 +1747,7 @@ function pointToSegmentDistance(p: Point, v: Point, w: Point) {
 }
 
 // Helper: Draws strokes onto ANY context (Screen or Save File)
-const renderStrokesToContext = (ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
+const renderStrokesToContext = (ctx: CanvasRenderingContext2D, strokes: Stroke[], isDarkMode: boolean) => {
   strokes.forEach(stroke => {
     ctx.beginPath();
 
@@ -1603,7 +1756,7 @@ const renderStrokesToContext = (ctx: CanvasRenderingContext2D, strokes: Stroke[]
       ctx.lineWidth = stroke.width;
     } else {
       ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = stroke.color;
+      ctx.strokeStyle = resolveStrokeColor(stroke.color, isDarkMode);
       ctx.lineWidth = stroke.width;
     }
 
@@ -1637,11 +1790,35 @@ const renderStrokesToContext = (ctx: CanvasRenderingContext2D, strokes: Stroke[]
   });
 };
 
+function resolveStrokeColor(color: string, isDark: boolean) {
+  if (!isDark) return color;
+
+  const c = color.trim().toLowerCase();
+
+  if (c === "#000" || c === "#000000") return "#ffffff";
+  if (c === "#fff" || c === "#ffffff") return "#000000";
+
+  return color;
+}
+
+const invertHex = (hex: string) => {
+  if (hex.toLowerCase() === "#000000") return "#ffffff";
+  if (hex.toLowerCase() === "#ffffff") return "#000000";
+  return hex; // keep all other colors untouched
+};
+
+
 // ==========================================
 // 2. MAIN COMPONENT
 // ==========================================
 
 export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
+  const { theme } = useTheme();
+  const isDarkMode = theme === "dark";
+
+  useEffect(() => {
+    requestAnimationFrame(() => redrawCanvas(strokes));
+  }, [theme]);
 
   const router = useRouter();
 
@@ -1656,6 +1833,18 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const panStartRef = useRef({ x: 0, y: 0 });
   const currentPoints = useRef<Point[]>([]);
   const hasCenteredRef = useRef(false);
+
+
+  // for the audio functionality
+  const livekitRoomRef = useRef<Room | null>(null);
+  const [isInCall, setIsInCall] = useState(false);
+
+  // for muting and unmuting the user
+  const [isMuted, setIsMuted] = useState(false);
+
+  // for showing who is speaking
+  const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
+
 
   const [selectedTool, setSelectedTool] = useState<Stroke["tool"]>("pencil");
   const [selectedColor, setSelectedColor] = useState('#000000');
@@ -1676,6 +1865,8 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
 
+
+
   const screenToWorld = (screenX: number, screenY: number) => {
     return {
       x: (screenX - camera.x) / camera.zoom,
@@ -1692,12 +1883,14 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     const dpr = window.devicePixelRatio || 1;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
+    ctx.fillStyle = isDarkMode ? "#000000" : "#ffffff";
+    ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
 
     ctx.translate(camera.x, camera.y);
     ctx.scale(camera.zoom, camera.zoom);
 
-    renderStrokesToContext(ctx, strokesToDraw);
+    renderStrokesToContext(ctx, strokesToDraw, isDarkMode);
   };
 
   useEffect(() => {
@@ -1739,14 +1932,103 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    ctx.fillStyle = "white";
+    ctx.fillStyle = isDarkMode ? "#000000" : "#ffffff";
     ctx.fillRect(0, 0, width, height);
 
     ctx.translate(-minX, -minY);
-    renderStrokesToContext(ctx, strokes);
+    renderStrokesToContext(ctx, strokes, isDarkMode);
 
     return canvas.toDataURL("image/png");
   };
+
+
+  // for the audio functionality
+  const identity =
+    userEmail ??
+    `guest-${Math.random().toString(36).slice(2, 8)}`;
+
+  console.log("JOIN AUDIO WITH IDENTITY:", identity);
+
+  // for the toggle mute and unmute
+  const toggleMute = async () => {
+    if (!livekitRoomRef.current) return;
+
+    const lp = livekitRoomRef.current.localParticipant;
+
+    try {
+      if (isMuted) {
+        await lp.setMicrophoneEnabled(true);
+        setIsMuted(false);
+        toast.success("Microphone Unmuted");
+      } else {
+        await lp.setMicrophoneEnabled(false);
+        setIsMuted(true);
+        toast.error("Microphone Muted");
+      }
+    } catch (err) {
+      console.error("Mute error:", err);
+    }
+  };
+
+  const joinAudioRoom = async () => {
+    try {
+      const res = await fetch("/api/livekit/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId,
+          userEmail: identity,
+        }),
+      });
+
+      const { token, url } = await res.json();
+
+      const room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+      });
+
+      livekitRoomRef.current = room;
+
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === "audio") {
+          const audio = track.attach();
+          audio.autoplay = true;
+          document.body.appendChild(audio);
+        }
+      });
+
+      // SPEAKER DETECTION LOGIC
+      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        const speakingIdentities = speakers.map(s => s.identity);
+        setActiveSpeakers(speakingIdentities);
+      });
+
+      await room.connect(url, token);
+
+      // Request mic
+      await room.localParticipant.setMicrophoneEnabled(true);
+      setIsMuted(false);
+      setIsInCall(true);
+      toast.success("🎙️ Audio connected");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to join audio");
+    }
+  };
+
+
+  const leaveAudioRoom = () => {
+    if (!livekitRoomRef.current) return;
+
+    livekitRoomRef.current.disconnect();
+    livekitRoomRef.current = null;
+    setIsInCall(false);
+    setActiveSpeakers([]);
+
+    toast("🔇 Left audio call");
+  };
+
 
   const summarizeEntireBoard = async () => {
     try {
@@ -1786,7 +2068,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     const ctx = tempCanvas.getContext("2d");
     if (!ctx) return null;
 
-    ctx.fillStyle = "white";
+    ctx.fillStyle = isDarkMode ? "#000000" : "#ffffff";
     ctx.fillRect(0, 0, viewWidth, viewHeight);
     ctx.drawImage(canvas, -rect.left, -rect.top);
 
@@ -1848,7 +2130,7 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
       ctx.fillRect(0, 0, width, height);
       ctx.translate(-minX, -minY);
 
-      renderStrokesToContext(ctx, strokes);
+      renderStrokesToContext(ctx, strokes, isDarkMode);
 
       const blob = await new Promise<Blob>((resolve) => tempCanvas.toBlob((b) => resolve(b!), "image/png"));
       const metadata = { name: `whiteboard-${roomId}.png`, mimeType: "image/png" };
@@ -2405,39 +2687,95 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
     document.addEventListener("mouseup", handleMouseUp);
   };
 
+  const displayColor = isDarkMode
+    ? invertHex(selectedColor)
+    : selectedColor;
+
   return (
-    <div className="bg-gray-50 min-h-screen flex flex-col font-sans">
+    <div className="min-h-screen flex flex-col font-sans
+      bg-gray-50 text-gray-900
+      dark:bg-black dark:text-white
+    ">
+
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
 
-      <header className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm z-70 shrink-0">
+      <header
+        className="
+          sticky top-0 z-70 shrink-0
+          px-6 py-4 flex items-center justify-between
+          backdrop-blur-lg transition-colors
+          bg-white/80 border-b border-gray-200
+          dark:bg-black/70 dark:border-gray-800
+        "
+      >
+
         <div className="flex flex-col">
-          <h1 className="text-lg font-semibold text-gray-900 tracking-tight flex items-center gap-2">
+          <h1 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
             Whiteboard
           </h1>
+
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <span>Room:</span>
-            <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-mono">{roomId}</code>
+            <code className="
+              px-1.5 py-0.5 rounded font-mono
+              bg-gray-100 text-gray-700
+              dark:bg-gray-800 dark:text-gray-300
+            ">
+              {roomId}
+            </code>
+
           </div>
         </div>
 
         <div className="flex items-center gap-4">
           <div className="relative group z-50">
-            <button className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition-colors cursor-default">
+            <button className="
+              flex items-center gap-2 px-3 py-1.5 rounded-full transition
+              bg-gray-100 border border-gray-200 text-gray-700
+              dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300
+              cursor-default
+            ">
               <span className="text-sm font-medium text-gray-600">{users.length} Online</span>
             </button>
-            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 p-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+            <div className="
+              absolute right-0 top-full mt-2 w-48 p-2 rounded-xl shadow-xl
+              bg-white border border-gray-200
+              dark:bg-gray-900 dark:border-gray-700
+              opacity-0 invisible group-hover:opacity-100 group-hover:visible
+              transition-all duration-200
+            ">
+
               <ul className="flex flex-col gap-1 overflow-y-auto max-h-40">
-                {users.map((user, i) => (
-                  <li key={i} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold bg-blue-500">
-                      {user.id ? user.id.charAt(0).toUpperCase() : '?'}
-                    </div>
-                    <span className="text-sm text-gray-600 truncate max-w-[120px]">{user.id}</span>
-                  </li>
-                ))}
+                {users.map((user, i) => {
+                  const isSpeaking = activeSpeakers.includes(user.id);
+                  return (
+                    <li key={i} className={`
+                      flex items-center gap-2 px-2 py-1.5 rounded-lg
+                      hover:bg-gray-100 dark:hover:bg-gray-800
+                      ${isSpeaking ? 'bg-green-100/50 dark:bg-green-900/20' : ''}
+                    `}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold bg-blue-500 transition-all ${isSpeaking ? 'ring-2 ring-green-500 scale-110' : ''}`}>
+                        {user.id ? user.id.charAt(0).toUpperCase() : '?'}
+                      </div>
+                      <span className="text-sm text-gray-600 truncate max-w-[120px]">{user.id}</span>
+                      {isSpeaking && <span className="text-[10px] text-green-500 animate-pulse">●</span>}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           </div>
+          {isInCall && (
+            <button
+              onClick={toggleMute}
+              className={`
+                px-4 py-2 rounded-lg font-medium transition-colors text-white
+                ${isMuted ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"}
+              `}
+            >
+              {isMuted ? "🔇 Muted" : "🎤 Live"}
+            </button>
+          )}
           <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-gray-900 hover:bg-black text-white text-sm font-medium px-4 py-2 rounded-lg">
             Add Board
           </button>
@@ -2459,7 +2797,25 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
             {loadingSummary ? "Processing..." : "AI Full Board Summary"}
           </button>
 
+          {/* UI for the audio functionality */}
+          <button
+            onClick={isInCall ? leaveAudioRoom : joinAudioRoom}
+            className={`
+    px-4 py-2 rounded-lg font-medium
+    ${isInCall
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-green-600 hover:bg-green-700"}
+    text-white
+  `}
+          >
+            {isInCall ? "Leave Audio" : "Join Audio"}
+          </button>
+
+
+
         </div>
+
+
       </header>
 
       {isModalOpen && (
@@ -2526,77 +2882,158 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
 
         <aside
           className={`
-            fixed z-80 bg-white/95 backdrop-blur-sm shadow-xl border border-gray-200/60 p-3 flex gap-5 transition-all duration-300 ease-in-out rounded-full flex-row items-center
+            fixed z-80
             bottom-6 left-1/2 -translate-x-1/2
-            ${isToolbarVisible ? 'translate-y-0 opacity-100' : 'translate-y-[200%] opacity-0'}
-            md:top-28 md:left-4 md:bottom-auto
-            md:translate-y-0
-            ${isToolbarVisible ? 'md:translate-x-0' : 'md:-translate-x-[150%]'}
-            md:rounded-2xl md:flex-col md:items-start
+            px-4 py-3
+            flex flex-row items-center gap-5
+            rounded-full
+            backdrop-blur-lg
+            shadow-xl
+            border
+            transition-all duration-300 ease-in-out
+
+            bg-white/90 border-gray-200
+            dark:bg-black/80 dark:border-gray-700
+
+            ${isToolbarVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-20 pointer-events-none'}
           `}
         >
-          <div className="flex md:flex-col flex-row gap-1.5">
+          {/* TOOLS */}
+          <div className="flex flex-row gap-1.5">
             {[
-              { id: 'pencil', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg> },
-              { id: 'line', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="19" x2="19" y2="5"></line></svg> },
-              { id: 'rect', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg> },
-              { id: 'circle', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle></svg> },
-              { id: 'eraser', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg> },
+              { id: 'pencil', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg> },
+              { id: 'line', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="19" x2="19" y2="5" /></svg> },
+              { id: 'rect', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /></svg> },
+              { id: 'circle', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /></svg> },
+              { id: 'eraser', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg> },
             ].map((t) => (
               <button
                 key={t.id}
                 onClick={() => setSelectedTool(t.id as any)}
-                className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${selectedTool === t.id ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-500'}`}
-                title={t.id.charAt(0).toUpperCase() + t.id.slice(1)}
+                className={`p-2.5 rounded-xl flex items-center justify-center transition
+                  ${selectedTool === t.id
+                    ? 'bg-black text-white dark:bg-white dark:text-black'
+                    : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}
+                `}
+                title={t.id}
               >
                 {t.icon}
               </button>
             ))}
           </div>
 
-          <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+          <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
 
-          <div className="flex md:flex-col flex-row gap-2 items-center">
-            <input type="color" value={selectedColor} onChange={(e) => setSelectedColor(e.target.value)} className="w-8 h-8 rounded-full border-2 border-white cursor-pointer" />
-            <input type="range" min="1" max="20" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="md:w-1.5 md:h-20 w-20 h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer" style={{ writingMode: typeof window !== 'undefined' && window.innerWidth >= 768 ? 'vertical-lr' : 'horizontal-tb' } as any} />
+          {/* COLOR + SIZE */}
+          <div className="flex flex-row gap-2 items-center">
+            <input
+              type="color"
+              value={displayColor}
+              onChange={(e) => {
+                const picked = e.target.value;
+                setSelectedColor(
+                  isDarkMode ? invertHex(picked) : picked
+                );
+              }}
+              className="w-8 h-8 rounded-full border-2 border-white cursor-pointer"
+            />
+            <input
+              type="range"
+              min="1"
+              max="20"
+              value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+              className="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer"
+            />
           </div>
 
-          <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+          <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
 
-          <button onClick={() => fileInputRef.current?.click()} className="p-1 rounded-xl flex items-center justify-center transition-all hover:bg-gray-100 text-gray-500" title="Upload Image">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+          {/* IMAGE */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
+            title="Upload Image"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
           </button>
 
-          <div className="md:h-px md:w-full w-px h-8 bg-gray-200"></div>
+          <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
 
-          <div className="flex md:flex-col flex-row gap-1">
-            <button onClick={undo} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Undo">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
+          {/* ACTIONS */}
+          <div className="flex flex-row gap-1">
+            <button onClick={undo} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Undo">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
             </button>
-            <button onClick={redo} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Redo">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" /></svg>
+
+            <button onClick={redo} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Redo">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" /></svg>
             </button>
-            <button onClick={handleFitView} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Fit to Content">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
+
+            <button onClick={handleFitView} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Fit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
             </button>
-            <button onClick={clearCanvas} className="p-2 text-red-500 hover:bg-red-50 rounded-lg" title="Clear Canvas">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+
+            <button onClick={clearCanvas} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg" title="Clear">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
             </button>
           </div>
         </aside>
 
-        <div className="fixed z-80 bottom-24 left-4 md:left-0 md:top-28 md:bottom-auto">
+
+        <div className="fixed z-80 bottom-6 left-4">
           <button
             onClick={() => setIsToolbarVisible(!isToolbarVisible)}
-            className="bg-white border border-gray-200 md:border-l-0 text-gray-600 p-2 md:pr-3 rounded-full md:rounded-r-xl md:rounded-l-none shadow-md hover:bg-gray-50 transition-colors"
+            className="
+      flex items-center justify-center
+      w-10 h-10
+      rounded-full
+      border shadow-md
+      transition-all
+
+      bg-white border-gray-200 text-gray-600
+      hover:bg-gray-100
+
+      dark:bg-black dark:border-gray-700 dark:text-gray-300
+      dark:hover:bg-gray-800
+    "
+            title={isToolbarVisible ? 'Hide Toolbar' : 'Show Toolbar'}
           >
             {isToolbarVisible ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rotate-90 md:rotate-0"><path d="m15 18-6-6 6-6" /></svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="-rotate-90"
+              >
+                <path d="m15 18-6-6 6-6" />
+              </svg>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="-rotate-90"
+              >
+                <path d="m9 18 6-6-6-6" />
+              </svg>
             )}
           </button>
         </div>
+
+
 
         {aiSummary && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-9999">
