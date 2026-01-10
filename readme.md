@@ -1,108 +1,217 @@
-# 🧠 Real-Time Collaborative Whiteboard
+# 🧠 CollabBoard – Real-Time Collaborative AI Whiteboard
 
-A **real-time collaborative whiteboard platform** with live drawing, multi-user audio communication, AI-powered summarization, and cloud export capabilities.  
-Built for remote collaboration, online classrooms, brainstorming sessions, and team meetings.
+CollabBoard is a **real-time collaborative infinite whiteboard platform** designed for brainstorming, teaching, planning, and team collaboration.  
+It combines **live drawing**, **real-time sync**, **AI assistance**, and **audio/video communication** into one unified experience.
+
+> Built as part of **HackSkill / Hackathon Project** by **Team CodeRangers**
 
 ---
 
-## 🚀 Features
+## 🚀 Live Demo
+> _(Add deployment link here if available)_  
+Example: `https://collabboard.vercel.app`
 
-### 🎨 Real-Time Whiteboard
-- Live multi-user drawing using WebSockets
-- Pencil, line, rectangle, circle, and eraser tools
+---
+
+## 👥 Team CodeRangers
+- Arpit Goyal  
+- Vaibhav Kumar Shashwat  
+- Archisman Naskar  
+- **Arpit Kumar Shrivastava**
+
+---
+
+## ✨ Key Features
+
+### 🖌️ Infinite Whiteboard
+- Smooth freehand drawing
+- Shapes, text, eraser tools
 - Infinite canvas with pan & zoom
-- Undo / redo and canvas reset
-- Real-time synchronization across all users in a room
-
-### ✨ Smart Shape Detection
-- Automatically detects rough hand-drawn shapes
-- Converts freehand drawings into clean:
-  - Lines
-  - Rectangles
-  - Circles
-- Improves readability while keeping natural drawing flow
-
-### 📝 Boards & Media
-- Add floating text boards (sticky notes style)
-- Drag, rename, edit, and delete boards in real time
-- Upload and place images directly onto the canvas
-
-### 🔊 Live Audio and Video Calling (SFU-Based)
-- Built-in **multi-user audio communication**
-- Powered by **LiveKit (SFU architecture)** for scalability
-- Join / leave audio rooms
-- Mute and unmute microphone
-- Real-time **speaker detection** showing who is currently speaking
-
-### 🤖 AI-Powered Summarization
-- AI summary of:
-  - Current viewport
-  - Entire whiteboard
-- Converts whiteboard visuals into textual summaries
-- Useful for meeting notes and brainstorming recap
-
-### ☁️ Google Drive Export
-- Export full whiteboard snapshot as an image
-- Automatically calculates canvas bounds
-- Uploads securely to Google Drive using OAuth 2.0
+- Real-time cursor & drawing sync
 
 ---
 
-## 🛠️ Tech Stack
+### 👥 Real-Time Collaboration
+- Multiple users join the same room
+- Live board updates using **Socket.io**
+- Room-based collaboration using unique `roomId`
+
+---
+
+### 🎥 Audio & Video Calling (LiveKit)
+- Built-in **real-time video & audio calls**
+- One call per whiteboard room
+- Secure WebRTC connection using LiveKit
+- Mute / Unmute microphone
+- Camera on / off
+- Auto participant management
+
+---
+
+### 🤖 AI-Powered Features
+- **AI Whiteboard Summary**
+  - Generates concise summaries of board content
+- **Visual Understanding**
+  - Reads the entire whiteboard (not just visible area)
+- **Auto Shape Correction**
+  - Converts rough sketches into clean shapes
+- Powered by **Google Gemini AI**
+
+---
+
+### ☁️ Google Drive Integration
+- Save whiteboard snapshots directly to Google Drive
+- Useful for documentation and sharing
+
+---
+
+### 🔐 Authentication & Security
+- Firebase Authentication
+- Secure user sessions
+- LiveKit tokens generated server-side only
+- No sensitive keys exposed on frontend
+
+---
+
+## 🧱 Tech Stack
 
 ### Frontend
 - **Next.js (App Router)**
-- **React + TypeScript**
-- **Tailwind CSS**
-- **Canvas API**
+- React + TypeScript
+- Tailwind CSS
+- HTML5 Canvas
 
-### Real-Time & Collaboration
-- **Socket.IO** – real-time drawing sync
-- **LiveKit** – scalable SFU-based audio calling
+### Backend / Infrastructure
+- Node.js
+- Socket.io (real-time sync)
+- Firebase (Auth + Firestore)
 
-### Backend & Services
-- **Firebase Authentication**
-- **Firestore / Database for board persistence**
-- **Google Drive API**
-- **AI Vision APIs** – board summarization
+### Video & Audio
+- **LiveKit (WebRTC)**
 
----
-
-## 🧩 Architecture Overview
-
-Clients (Browser)
-↓ WebSocket
-Real-time Sync Server (Socket.IO)
-↓
-Persistent Storage (Boards / Strokes)
-↓
-LiveKit SFU (Audio)
-↓
-AI Services (Summarization)
----
-
-## 🧪 Key Highlights
-
-- SFU-based audio (scalable and production-ready)
-- Optimized canvas rendering with throttled updates
-- Smart geometry detection for better UX
-- Real-time speaker indication
-- AI-assisted collaboration
+### AI & Processing
+- Google Gemini API
 
 ---
 
-## ⚙️ Setup Instructions
+## 🗂️ Project Structure
 
-### 1️⃣ Clone the Repository
-```bash
-1.git clone https://github.com/your-username/your-repo-name.git
-2.cd your-repo-name
-3.npm install
-4.NEXT_PUBLIC_FIREBASE_API_KEY=...
-NEXT_PUBLIC_LIVEKIT_URL=...
-LIVEKIT_API_KEY=...
-LIVEKIT_API_SECRET=...
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-5.npm run dev
+src/
+┣ app/
+┃ ┣ api/
+┃ ┃ ┣ livekit/
+┃ ┃ ┃ ┗ token/route.ts
+┃ ┣ room/[roomId]/
+┃ ┃ ┣ components/
+┃ ┃ ┃ ┣ Board.tsx
+┃ ┃ ┃ ┣ Canvas.tsx
+┃ ┃ ┃ ┣ VideoCall.tsx
+┃ ┃ ┃ ┣ Toolbar.tsx
+┃ ┃ ┃ ┗ RoomHeader.tsx
+┃ ┃ ┣ hooks/
+┃ ┃ ┣ utils/
+┃ ┃ ┗ page.tsx
+┣ lib/
+┣ utils/
+┗ globals.css
 
+
+---
+
+## ⚙️ Environment Variables
+
+Create a `.env.local` file in the root:
+
+```env
+# Firebase
+NEXT_PUBLIC_FIREBASE_API_KEY=xxxx
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=xxxx
+
+# LiveKit
+LIVEKIT_API_KEY=xxxx
+LIVEKIT_API_SECRET=xxxx
+LIVEKIT_URL=wss://xxxx.livekit.cloud
+
+# Google AI
+GEMINI_API_KEY=xxxx
+
+---
+
+## How to run locally 
+▶️ Running Locally
+1️⃣ Install dependencies
+npm install
+
+2️⃣ Start development server
+npm run dev
+
+3️⃣ Open in browser
+http://localhost:3000
+
+---
+
+🧪 How to Test Video Call
+
+Open the same room in two browsers
+
+Click 🎥 Join Call
+
+Allow camera & microphone
+
+You will see and hear each other in real time
+
+🧠 How It Works (High Level)
+User joins Room
+   ↓
+Socket.io syncs whiteboard
+   ↓
+LiveKit token generated (server)
+   ↓
+WebRTC video/audio connection
+   ↓
+AI processes whiteboard data
+
+🏆 Why CollabBoard?
+
+Combines collaboration + communication + AI
+
+Designed for classrooms, hackathons, teams, and remote work
+
+Lightweight, scalable, and extensible
+
+Inspired by tools like Miro, FigJam, Notion Whiteboard, but smarter
+
+---
+
+## 🔮 Future Enhancements
+
+Screen sharing
+
+Call recording
+
+AI meeting summary
+
+Voice-to-text notes
+
+Role-based permissions
+
+Export to PDF / image
+
+---
+
+##📜 License
+
+This project is built for educational and hackathon purposes.
+
+---
+
+## 🙌 Acknowledgements
+
+LiveKit
+
+Google Gemini AI
+
+Firebase
+
+Open-source community
+---
