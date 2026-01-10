@@ -135,9 +135,9 @@ LIVEKIT_URL=wss://xxxx.livekit.cloud
 # Google AI
 GEMINI_API_KEY=xxxx
 
+---
 
-⚠️ LIVEKIT_API_SECRET must never be exposed to the frontend.
-
+## How to run locally 
 ▶️ Running Locally
 1️⃣ Install dependencies
 npm install
@@ -147,6 +147,8 @@ npm run dev
 
 3️⃣ Open in browser
 http://localhost:3000
+
+---
 
 🧪 How to Test Video Call
 
@@ -179,7 +181,9 @@ Lightweight, scalable, and extensible
 
 Inspired by tools like Miro, FigJam, Notion Whiteboard, but smarter
 
-🔮 Future Enhancements
+---
+
+## 🔮 Future Enhancements
 
 Screen sharing
 
@@ -193,11 +197,15 @@ Role-based permissions
 
 Export to PDF / image
 
-📜 License
+---
+
+##📜 License
 
 This project is built for educational and hackathon purposes.
 
-🙌 Acknowledgements
+---
+
+## 🙌 Acknowledgements
 
 LiveKit
 
@@ -206,3 +214,4 @@ Google Gemini AI
 Firebase
 
 Open-source community
+---
