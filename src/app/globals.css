@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@custom-variant dark (.dark &);
+/* Reset */
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+/* IMPORTANT:
+   Do NOT set background or color here.
+   Tailwind + next-themes will control it via className.
+*/
+
