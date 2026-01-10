@@ -313,7 +313,9 @@ export default function Whiteboard({ roomId, userEmail }: WhiteboardProps) {
   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
 
 
-  const [selectedTool, setSelectedTool] = useState<Stroke["tool"]>("pencil");
+  const [selectedTool, setSelectedTool] =
+    useState<Stroke["tool"] | "hand">("pencil");
+  const prevToolRef = useRef<typeof selectedTool>("pencil");
   const [selectedColor, setSelectedColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(2);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -771,6 +773,37 @@ const VideoParticipant = ({ participant, isLocal = false }: {
     }, 1000);
   }
 
+  // =====================
+  // Spacebar Temporary Hand Tool
+  // =====================
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (selectedTool !== "hand") {
+          prevToolRef.current = selectedTool;
+          setSelectedTool("hand");
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        setSelectedTool(prevToolRef.current);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [selectedTool]);
+
+
   useEffect(() => {
     if (!roomId) return;
     const unsub = subscribeToBoard(roomId, (data) => {
@@ -819,6 +852,14 @@ const VideoParticipant = ({ participant, isLocal = false }: {
   }, [camera, strokes]);
 
   const startDrawing = (e: React.MouseEvent | MouseEvent) => {
+    
+    // If Hand tool selected → always pan on left click
+    if (selectedTool === "hand") {
+      setIsPanning(true);
+      panStartRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
     if (e.button === 1 || (e as any).code === 'Space') {
       setIsPanning(true);
       panStartRef.current = { x: e.clientX, y: e.clientY };
@@ -1015,6 +1056,49 @@ const VideoParticipant = ({ participant, isLocal = false }: {
     requestAnimationFrame(() => redrawCanvas(strokes));
     toast("Canvas Focused 🔭");
   };
+
+  // =====================
+  // Centered Zoom Controls
+  // =====================
+
+  const applyZoom = (newZoom: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const viewW = container.clientWidth;
+    const viewH = container.clientHeight;
+
+    // Screen center
+    const screenCenterX = viewW / 2;
+    const screenCenterY = viewH / 2;
+
+    // Convert screen center → world coordinates BEFORE zoom
+    const worldCenterX = (screenCenterX - camera.x) / camera.zoom;
+    const worldCenterY = (screenCenterY - camera.y) / camera.zoom;
+
+    // Compute new camera position to keep world center fixed
+    const newCamX = screenCenterX - worldCenterX * newZoom;
+    const newCamY = screenCenterY - worldCenterY * newZoom;
+
+    setCamera({ x: newCamX, y: newCamY, zoom: newZoom });
+    requestAnimationFrame(() => redrawCanvas(strokes));
+  };
+
+  const zoomIn = () => {
+    const newZoom = Math.min(camera.zoom + 0.15, 5);
+    applyZoom(newZoom);
+  };
+
+  const zoomOut = () => {
+    const newZoom = Math.max(camera.zoom - 0.15, 0.1);
+    applyZoom(newZoom);
+  };
+
+  const resetView = () => {
+    applyZoom(1);
+    toast("Zoom reset to 100%");
+  };
+
 
   useEffect(() => {
     if (hasCenteredRef.current) return;
@@ -1441,8 +1525,12 @@ const VideoParticipant = ({ participant, isLocal = false }: {
 
       <div
         ref={containerRef}
-        className="relative flex-1 w-full bg-white cursor-crosshair overflow-hidden"
+        className={`relative flex-1 w-full bg-white overflow-hidden
+          ${selectedTool === "hand" ? "cursor-grab" : "cursor-crosshair"}
+        `}
+        style={{ cursor: isPanning ? "grabbing" : undefined }}
       >
+
         <canvas ref={canvasRef} className="absolute top-0 left-0 block w-full h-full" />
 
         <div
@@ -1504,6 +1592,7 @@ const VideoParticipant = ({ participant, isLocal = false }: {
           {/* TOOLS */}
           <div className="flex flex-row gap-1.5">
             {[
+              { id: 'hand', icon: (<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"> <path d="M18 11V6a2 2 0 0 0-4 0v5" /> <path d="M14 10V4a2 2 0 1 0-4 0v6" /> <path d="M10 10V3a2 2 0 1 0-4 0v7" /> <path d="M6 12v-1a2 2 0 1 0-4 0v6c0 1.1.9 2 2 2h9" /> <path d="M18 8a2 2 0 0 1 4 2v7c0 1.1-.9 2-2 2h-3" /> </svg> )},
               { id: 'pencil', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg> },
               { id: 'line', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="19" x2="19" y2="5" /></svg> },
               { id: 'rect', icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /></svg> },
@@ -1565,21 +1654,86 @@ const VideoParticipant = ({ participant, isLocal = false }: {
 
           {/* ACTIONS */}
           <div className="flex flex-row gap-1">
-            <button onClick={undo} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Undo">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
+
+            {/* Undo */}
+            <button onClick={undo}
+              className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              title="Undo">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 7v6h6" />
+                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+              </svg>
             </button>
 
-            <button onClick={redo} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Redo">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" /></svg>
+            {/* Redo */}
+            <button onClick={redo}
+              className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              title="Redo">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 7v6h-6" />
+                <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+              </svg>
             </button>
 
-            <button onClick={handleFitView} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" title="Fit">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
+            {/* Fit View (existing) */}
+            <button onClick={handleFitView}
+              className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              title="Fit to Screen">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+              </svg>
             </button>
 
-            <button onClick={clearCanvas} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg" title="Clear">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+            {/* Zoom In */}
+            <button onClick={zoomIn}
+              className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              title="Zoom In">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="11" y1="8" x2="11" y2="14" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
             </button>
+
+            {/* Zoom Percentage Display */}
+            <button
+              onClick={resetView}
+              className="px-2 text-xs font-semibold text-gray-600 dark:text-gray-300 
+                        hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              title="Reset Zoom to 100%"
+            >
+              {Math.round(camera.zoom * 100)}%
+            </button>
+            {/* Zoom Out */}
+
+            <button onClick={zoomOut}
+              className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              title="Zoom Out">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </button>
+            
+            {/* Clear */}
+            <button onClick={clearCanvas}
+              className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+              title="Clear">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18" />
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+              </svg>
+            </button>
+
           </div>
         </aside>
 
