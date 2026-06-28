@@ -8,8 +8,7 @@ It combines **live drawing**, **real-time sync**, **AI assistance**, and **audio
 ---
 
 ## 🚀 Live Demo
-> _(Add deployment link here if available)_  
-Example: `https://collabboard.vercel.app`
+https://collaboard-a19i.onrender.com/login
 
 ---
 
