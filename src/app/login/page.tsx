@@ -9,9 +9,9 @@ import {
   sendPasswordResetEmail
 } from "firebase/auth";
 import {
-  getOAuthErrorMessage,
+  getGoogleAuthErrorMessage,
   saveGoogleDriveToken,
-  signInWithOAuthProvider,
+  signInWithGoogle,
 } from "@/lib/oauth";
 import toast from "react-hot-toast";
 
@@ -53,22 +53,13 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const githubLogin = async () => {
-    try {
-      await signInWithOAuthProvider(auth, "github");
-      router.push("/home");
-    } catch (err) {
-      toast.error(getOAuthErrorMessage(err, "github"));
-    }
-  };
-
   const googleLogin = async () => {
     try {
-      const result = await signInWithOAuthProvider(auth, "google");
+      const result = await signInWithGoogle(auth);
       saveGoogleDriveToken(result);
       router.push("/home");
     } catch (err) {
-      toast.error(getOAuthErrorMessage(err, "google"));
+      toast.error(getGoogleAuthErrorMessage(err));
     }
   };
 
@@ -115,7 +106,7 @@ export default function Login() {
   return (
     <div
       className="
-        pt-15
+        px-4 py-24 sm:px-6
         min-h-screen w-full flex items-center justify-center relative overflow-hidden
         bg-gradient-to-br
         from-blue-100 via-gray-100 to-purple-100
@@ -134,12 +125,12 @@ export default function Login() {
       {/* Card */}
       <div
         className="
-          relative z-10 w-full max-w-lg rounded-3xl p-10 backdrop-blur-xl shadow-2xl
+          relative z-10 w-full max-w-lg rounded-3xl p-6 sm:p-8 md:p-10 backdrop-blur-xl shadow-2xl
           bg-white/80 border border-gray-300
           dark:bg-gray-900/70 dark:border-gray-800
         "
       >
-        <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white text-center">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-white text-center">
           {mode === "login" ? "Welcome Back" : "Create Account"}
         </h1>
 
@@ -225,13 +216,6 @@ export default function Login() {
             Continue with Google
           </button>
 
-          <button
-            onClick={githubLogin}
-            className="w-full py-3 bg-gray-800 border border-gray-700 text-white font-semibold rounded-xl hover:bg-gray-700 transition flex items-center justify-center gap-2"
-          >
-            <img src="https://www.svgrepo.com/show/512317/github-142.svg" className="w-5 invert" />
-            Continue with GitHub
-          </button>
         </div>
 
         {/* Mode Switch */}

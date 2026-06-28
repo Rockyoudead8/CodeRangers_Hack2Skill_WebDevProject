@@ -33,22 +33,22 @@ export default function Navbar() {
   return (
     <nav
       className="
-        fixed top-0 left-0 w-full z-50 h-[8vh]
+        fixed top-0 left-0 w-full z-50 min-h-16
         backdrop-blur-lg transition-colors
         bg-white/70 dark:bg-black/70
         border-b border-gray-200 dark:border-gray-800
       "
     >
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-4">
 
         {/* Logo */}
-        <Link href="/" className="text-2xl font-extrabold tracking-wide">
+        <Link href="/" className="text-xl sm:text-2xl font-extrabold tracking-wide shrink-0">
           <span className="text-gray-900 dark:text-white">Collab</span>
           <span className="text-blue-600 dark:text-blue-500">Board</span>
         </Link>
 
         {/* Desktop Nav */}
-        <div className="hidden md:flex items-center gap-8">
+        <div className="hidden lg:flex items-center gap-8">
           <Link
             href="/home"
             className="
@@ -75,10 +75,10 @@ export default function Navbar() {
         {/* Desktop Right */}
         {!loading && (
           user ? (
-            <div className="hidden md:flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-3 min-w-0">
               <div
                 className="
-                  px-4 py-1 rounded-xl text-sm
+                  max-w-56 truncate px-4 py-1 rounded-xl text-sm
                   bg-white/60 border border-gray-300 text-gray-700
                   dark:bg-black/40 dark:border-gray-700 dark:text-gray-300
                 "
@@ -107,7 +107,7 @@ export default function Navbar() {
               </button>
             </div>
           ) : (
-            <div className="hidden md:flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-3">
               <Link href="/login">
                 <button className="px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800 transition">
                   Login
@@ -138,7 +138,8 @@ export default function Navbar() {
         {/* Mobile Menu Button */}
         <button
           onClick={() => setOpen(!open)}
-          className="md:hidden text-gray-900 dark:text-white"
+          className="lg:hidden text-gray-900 dark:text-white p-2 -mr-2"
+          aria-label="Toggle navigation menu"
         >
           <Menu size={26} />
         </button>
@@ -148,7 +149,7 @@ export default function Navbar() {
       {open && (
         <div
           className="
-            md:hidden px-6 py-5 space-y-4
+            lg:hidden px-4 sm:px-6 py-5 space-y-4
             bg-white/90 dark:bg-black/90
             border-t border-gray-200 dark:border-gray-800
             transition-colors
@@ -157,7 +158,7 @@ export default function Navbar() {
           <Link
             href="/home"
             onClick={() => setOpen(false)}
-            className="block text-gray-800 dark:text-gray-200 hover:text-blue-500 transition"
+            className="block py-1 text-gray-800 dark:text-gray-200 hover:text-blue-500 transition"
           >
             Whiteboard
           </Link>
@@ -165,7 +166,7 @@ export default function Navbar() {
           <Link
             href="/about"
             onClick={() => setOpen(false)}
-            className="block text-gray-800 dark:text-gray-200 hover:text-blue-500 transition"
+            className="block py-1 text-gray-800 dark:text-gray-200 hover:text-blue-500 transition"
           >
             About
           </Link>

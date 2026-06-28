@@ -69,7 +69,7 @@ export default function Home() {
   return (
     <div
       className="
-        min-h-screen flex items-center justify-center p-6
+        min-h-screen flex items-center justify-center px-4 py-24 sm:px-6 lg:px-8
         text-gray-800 dark:text-white
         bg-gradient-to-br
         from-blue-100 via-grey-100 to-purple-100
@@ -80,32 +80,32 @@ export default function Home() {
       <div className="w-full max-w-6xl mx-auto">
 
         {/* Header */}
-        <div className="text-center mb-10 space-y-2">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-wide flex items-center justify-center gap-3">
-            <Sparkles className="text-blue-500 dark:text-blue-400 animate-pulse" />
-            Real-Time Collaboration Hub
-            <Sparkles className="text-purple-500 dark:text-purple-400 animate-pulse" />
+        <div className="text-center mb-8 sm:mb-10 space-y-2">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-wide flex items-center justify-center gap-2 sm:gap-3">
+            <Sparkles className="text-blue-500 dark:text-blue-400 animate-pulse shrink-0" />
+            <span>Real-Time Collaboration Hub</span>
+            <Sparkles className="text-purple-500 dark:text-purple-400 animate-pulse shrink-0" />
           </h1>
-          <p className="text-gray-700 dark:text-gray-400 text-sm">
+          <p className="text-gray-700 dark:text-gray-400 text-sm px-2">
             Create or join a live collaborative whiteboard. No pressure. Just chaos.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-8">
 
           {/* Create Room */}
           <div
             className="
-              backdrop-blur-xl rounded-2xl p-8 transition
+              backdrop-blur-xl rounded-2xl p-5 sm:p-8 transition
               bg-gray-50/80 border border-gray-300
               dark:bg-gray-900/70 dark:border-gray-800
               shadow-xl hover:-translate-y-1
               hover:shadow-blue-800/40
             "
           >
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <PlusCircle className="text-blue-500 dark:text-blue-400" size={34} />
-              <h2 className="text-3xl font-bold text-blue-500 dark:text-blue-400 tracking-wide">
+            <div className="flex items-center justify-center gap-2 mb-5 sm:mb-6">
+              <PlusCircle className="text-blue-500 dark:text-blue-400 shrink-0" size={34} />
+              <h2 className="text-2xl sm:text-3xl font-bold text-blue-500 dark:text-blue-400 tracking-wide">
                 Create Room
               </h2>
             </div>
@@ -121,7 +121,7 @@ export default function Home() {
                 readOnly
                 placeholder="Generate room code"
                 className="
-                  flex-1 px-4 py-3 rounded-lg
+                  min-w-0 flex-1 px-4 py-3 rounded-lg
                   bg-gray-50 border border-gray-300
                   text-gray-900 placeholder-gray-500
                   dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200
@@ -129,10 +129,10 @@ export default function Home() {
                 "
               />
 
-              <div className="flex gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:flex gap-3">
                 <button
                   onClick={handleGenerate}
-                  className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center gap-2 transition"
+                  className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition"
                 >
                   <KeyRound size={18} />
                   Generate
@@ -141,7 +141,7 @@ export default function Home() {
                 <button
                   onClick={handleCopy}
                   className="
-                    px-5 py-3 font-semibold rounded-lg flex items-center gap-2 transition
+                    px-5 py-3 font-semibold rounded-lg flex items-center justify-center gap-2 transition
                     border border-red-500 text-red-500
                     hover:bg-red-500/10
                   "
@@ -164,16 +164,16 @@ export default function Home() {
           {/* Join Room */}
           <div
             className="
-              backdrop-blur-xl rounded-2xl p-8 transition
+              backdrop-blur-xl rounded-2xl p-5 sm:p-8 transition
               bg-gray-50/80 border border-gray-300
               dark:bg-gray-900/70 dark:border-gray-800
               shadow-xl hover:-translate-y-1
               hover:shadow-purple-800/40
             "
           >
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <Users className="text-purple-500 dark:text-purple-400" size={34} />
-              <h2 className="text-3xl font-bold text-purple-500 dark:text-purple-400 tracking-wide">
+            <div className="flex items-center justify-center gap-2 mb-5 sm:mb-6">
+              <Users className="text-purple-500 dark:text-purple-400 shrink-0" size={34} />
+              <h2 className="text-2xl sm:text-3xl font-bold text-purple-500 dark:text-purple-400 tracking-wide">
                 Join Room
               </h2>
             </div>

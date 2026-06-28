@@ -43,21 +43,21 @@ export default function LandingPage() {
       "
     >
       {/* Hero Section */}
-      <div className="pt-20 flex flex-col items-center text-center mt-14 px-6">
-        <div className="flex items-center gap-2">
+      <div className="pt-24 sm:pt-28 flex flex-col items-center text-center px-4 sm:px-6">
+        <div className="flex max-w-full items-center justify-center gap-2">
           <Sparkles className="text-blue-500 dark:text-blue-400 animate-pulse" />
-          <p className="text-gray-600 dark:text-gray-400 text-sm tracking-wide">
+          <p className="text-gray-600 dark:text-gray-400 text-xs sm:text-sm tracking-wide">
             Real-Time Collaboration At The Speed Of Thought
           </p>
           <Sparkles className="text-purple-500 dark:text-purple-400 animate-pulse" />
         </div>
 
-        <h1 className="text-4xl md:text-6xl font-extrabold mt-4 leading-tight">
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold mt-4 leading-tight max-w-5xl">
           Create, Collaborate & Innovate
           <span className="text-blue-600 dark:text-blue-500"> Together</span>
         </h1>
 
-        <p className="text-gray-700 dark:text-gray-400 max-w-2xl mt-4">
+        <p className="text-gray-700 dark:text-gray-400 max-w-2xl mt-4 text-sm sm:text-base">
           A powerful real-time collaborative whiteboard where teams brainstorm,
           students learn, designers sketch, and ideas come alive instantly.
         </p>
@@ -65,7 +65,7 @@ export default function LandingPage() {
         <Link href="/home">
           <button
             className="
-              mt-8 px-8 py-4 rounded-xl text-lg font-bold
+              mt-8 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-base sm:text-lg font-bold
               flex items-center gap-2 transition
               bg-blue-600 hover:bg-blue-700 text-white
               shadow-lg shadow-blue-700/40
@@ -77,11 +77,11 @@ export default function LandingPage() {
       </div>
 
       {/* Features Section */}
-      <div className="mt-20 px-8 max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="mt-16 sm:mt-20 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-8">
         {/* Feature Card */}
         <div
           className="
-            backdrop-blur-xl rounded-2xl p-6 transition
+            backdrop-blur-xl rounded-2xl p-5 sm:p-6 transition
             bg-white/80 border border-gray-300
             dark:bg-gray-900/60 dark:border-gray-800
             hover:-translate-y-1 hover:shadow-blue-800/30
@@ -89,7 +89,7 @@ export default function LandingPage() {
         >
           <div className="flex items-center gap-3">
             <Users className="text-blue-500 dark:text-blue-400" size={32} />
-            <h2 className="text-xl font-bold">Real-Time Collaboration</h2>
+            <h2 className="text-lg sm:text-xl font-bold">Real-Time Collaboration</h2>
           </div>
           <p className="text-gray-700 dark:text-gray-400 mt-3">
             Work together instantly. See every stroke and change live.
@@ -98,7 +98,7 @@ export default function LandingPage() {
 
         <div
           className="
-            backdrop-blur-xl rounded-2xl p-6 transition
+            backdrop-blur-xl rounded-2xl p-5 sm:p-6 transition
             bg-white/80 border border-gray-300
             dark:bg-gray-900/60 dark:border-gray-800
             hover:-translate-y-1 hover:shadow-purple-800/30
@@ -106,7 +106,7 @@ export default function LandingPage() {
         >
           <div className="flex items-center gap-3">
             <PenTool className="text-purple-500 dark:text-purple-400" size={32} />
-            <h2 className="text-xl font-bold">Powerful Drawing Tools</h2>
+            <h2 className="text-lg sm:text-xl font-bold">Powerful Drawing Tools</h2>
           </div>
           <p className="text-gray-700 dark:text-gray-400 mt-3">
             Smooth strokes, shapes, writing and more. Your creativity, unleashed.
@@ -115,7 +115,7 @@ export default function LandingPage() {
 
         <div
           className="
-            backdrop-blur-xl rounded-2xl p-6 transition
+            backdrop-blur-xl rounded-2xl p-5 sm:p-6 transition
             bg-white/80 border border-gray-300
             dark:bg-gray-900/60 dark:border-gray-800
             hover:-translate-y-1 hover:shadow-green-800/30
@@ -123,7 +123,7 @@ export default function LandingPage() {
         >
           <div className="flex items-center gap-3">
             <ShieldCheck className="text-green-500 dark:text-green-400" size={32} />
-            <h2 className="text-xl font-bold">Secure & Private</h2>
+            <h2 className="text-lg sm:text-xl font-bold">Secure & Private</h2>
           </div>
           <p className="text-gray-700 dark:text-gray-400 mt-3">
             Your rooms are protected. Your ideas stay yours.
@@ -132,23 +132,23 @@ export default function LandingPage() {
       </div>
 
       {/* Highlight */}
-      <div className="mt-20 text-center px-6">
+      <div className="mt-16 sm:mt-20 text-center px-4 sm:px-6">
         <div
           className="
-            inline-flex items-center gap-2 px-6 py-3 rounded-full
+            inline-flex max-w-full items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-full
             bg-white/70 border border-gray-300
             dark:bg-gray-900 dark:border-gray-800
           "
         >
           <Zap className="text-yellow-500 dark:text-yellow-400" />
-          <p className="text-gray-700 dark:text-gray-300">
+          <p className="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
             Lightning Fast • Zero Friction • Built For Teams
           </p>
         </div>
       </div>
 
       {/* Footer */}
-      <footer className="mt-20 text-center text-gray-600 dark:text-gray-500 text-sm pb-8">
+      <footer className="mt-16 sm:mt-20 px-4 text-center text-gray-600 dark:text-gray-500 text-sm pb-8">
         CollabBoard © 2025 • Built to make teamwork less painful
       </footer>
     </div>
