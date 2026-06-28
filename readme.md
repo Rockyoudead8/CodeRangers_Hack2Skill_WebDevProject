@@ -8,7 +8,7 @@ It combines **live drawing**, **real-time sync**, **AI assistance**, and **audio
 ---
 
 ## 🚀 Live Demo
-
+https://collaboard-a19i.onrender.com
 
 ---
 
@@ -143,9 +143,6 @@ npm install
 
 2️⃣ Start development server
 npm run dev
-
-3️⃣ Open in browser
-http://localhost:3000
 
 ---
 
