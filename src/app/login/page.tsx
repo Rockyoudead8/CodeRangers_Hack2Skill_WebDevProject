@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { GithubAuthProvider } from "firebase/auth";
@@ -12,6 +12,36 @@ import {
   sendPasswordResetEmail
 } from "firebase/auth";
 import toast from "react-hot-toast";
+
+const getAuthErrorMessage = (error: unknown, mode: "login" | "signup") => {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+      return "Invalid email or password. Please try again.";
+    case "auth/email-already-in-use":
+      return "An account already exists with this email. Please log in instead.";
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/operation-not-allowed":
+      return "Email/password auth is not enabled for this Firebase project.";
+    case "auth/weak-password":
+      return "Password is too weak. Use at least 8 characters.";
+    case "auth/too-many-requests":
+      return "Too many attempts. Please wait a moment and try again.";
+    case "auth/network-request-failed":
+      return "Network error. Please check your connection and try again.";
+    default:
+      return mode === "signup"
+        ? "Could not create account. Please try again."
+        : "Could not log in. Please try again.";
+  }
+};
 
 export default function Login() {
   const router = useRouter();
@@ -47,37 +77,43 @@ export default function Login() {
     }
   };
 
-  const handleAuth = async () => {
+  const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
     try {
       setLoading(true);
 
-      if (!email || !password) return toast.error("Fill all fields.");
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (!normalizedEmail || !password) return toast.error("Fill all fields.");
       if (mode === "signup" && password.length < 8)
         return toast.error("Password must be 8+ characters.");
 
       if (mode === "signup") {
-        await createUserWithEmailAndPassword(auth, email, password);
-        toast.success("Account created 🎉");
+        await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+        toast.success("Account created");
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
-        toast.success("Login successful 🎉");
+        await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        toast.success("Login successful");
       }
 
       router.push("/home");
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(getAuthErrorMessage(err, mode));
     } finally {
       setLoading(false);
     }
   };
 
   const resetPassword = async () => {
-    if (!email) return toast.error("Enter email first");
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) return toast.error("Enter email first");
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, normalizedEmail);
       toast.success("Reset email sent.");
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(getAuthErrorMessage(err, "login"));
     }
   };
 
@@ -119,10 +155,11 @@ export default function Login() {
         </p>
 
         {/* Inputs */}
-        <div className="mt-8 flex flex-col gap-4">
+        <form className="mt-8 flex flex-col gap-4" onSubmit={handleAuth}>
           <input
             type="email"
             placeholder="Email Address"
+            autoComplete="email"
             className="
               w-full px-4 py-3 rounded-xl transition outline-none
               bg-gray-50 border border-gray-300 text-gray-900
@@ -136,6 +173,7 @@ export default function Login() {
           <input
             type="password"
             placeholder="Password"
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
             className="
               w-full px-4 py-3 rounded-xl transition outline-none
               bg-gray-50 border border-gray-300 text-gray-900
@@ -147,7 +185,7 @@ export default function Login() {
           />
 
           <button
-            onClick={handleAuth}
+            type="submit"
             disabled={loading}
             className="
               mt-2 w-full py-3 rounded-xl font-bold tracking-wide transition
@@ -163,7 +201,7 @@ export default function Login() {
               ? "Login"
               : "Create Account"}
           </button>
-        </div>
+        </form>
 
         {/* Forgot Password */}
         {mode === "login" && (

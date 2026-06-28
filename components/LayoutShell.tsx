@@ -2,6 +2,7 @@
 import React from "react";
 import { usePathname } from "next/navigation";
 import Navbar from "./Navbar";
+import { Toaster } from "react-hot-toast";
 
 export default function LayoutShell({
   children,
@@ -14,6 +15,7 @@ export default function LayoutShell({
   return (
     <>
       <Navbar />
+      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
 
       <div
         className={`

@@ -1,22 +1,41 @@
 'use client';
 
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { GithubAuthProvider } from "firebase/auth";
 import {
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail
 } from "firebase/auth";
 import toast from "react-hot-toast";
+
+const getAuthErrorMessage = (error: unknown) => {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "An account already exists with this email. Please log in instead.";
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/operation-not-allowed":
+      return "Email/password signup is not enabled for this Firebase project.";
+    case "auth/weak-password":
+      return "Password is too weak. Use at least 8 characters.";
+    case "auth/network-request-failed":
+      return "Network error. Please check your connection and try again.";
+    default:
+      return "Could not create account. Please try again.";
+  }
+};
 
 export default function Signup() {
   const router = useRouter();
 
-  const [mode, setMode] = useState<"login" | "signup">("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -47,19 +66,23 @@ export default function Signup() {
     }
   };
 
-  const handleAuth = async () => {
+  const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
     try {
       setLoading(true);
 
-      if (!email || !password) return toast.error("Fill all fields.");
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (!normalizedEmail || !password) return toast.error("Fill all fields.");
       if (password.length < 8)
         return toast.error("Password must be at least 8 characters.");
 
-      await createUserWithEmailAndPassword(auth, email, password);
-      toast.success("Account created 🎉");
+      await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+      toast.success("Account created");
       router.push("/home");
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(getAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -101,10 +124,11 @@ export default function Signup() {
         </p>
 
         {/* Inputs */}
-        <div className="mt-8 flex flex-col gap-4">
+        <form className="mt-8 flex flex-col gap-4" onSubmit={handleAuth}>
           <input
             type="email"
             placeholder="Email Address"
+            autoComplete="email"
             className="
               w-full px-4 py-3 rounded-xl transition outline-none
               bg-gray-50 border border-gray-300 text-gray-900
@@ -118,6 +142,7 @@ export default function Signup() {
           <input
             type="password"
             placeholder="Password"
+            autoComplete="new-password"
             className="
               w-full px-4 py-3 rounded-xl transition outline-none
               bg-gray-50 border border-gray-300 text-gray-900
@@ -129,7 +154,7 @@ export default function Signup() {
           />
 
           <button
-            onClick={handleAuth}
+            type="submit"
             disabled={loading}
             className="
               mt-2 w-full py-3 rounded-xl font-bold tracking-wide transition
@@ -141,7 +166,7 @@ export default function Signup() {
           >
             {loading ? "Processing..." : "Create Account"}
           </button>
-        </div>
+        </form>
 
         {/* Divider */}
         <div className="flex items-center gap-4 my-8">

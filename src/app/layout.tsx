@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Poppins } from "next/font/google";
+// @ts-ignore
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import LayoutShell from "../../components/LayoutShell";
