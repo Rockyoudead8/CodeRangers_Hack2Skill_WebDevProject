@@ -144,9 +144,6 @@ npm install
 2️⃣ Start development server
 npm run dev
 
-3️⃣ Open in browser
-http://localhost:3000
-
 ---
 
 🧪 How to Test Video Call
