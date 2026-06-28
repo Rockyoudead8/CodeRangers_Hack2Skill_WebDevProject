@@ -3,14 +3,16 @@
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
-import { GithubAuthProvider } from "firebase/auth";
 import {
-  GoogleAuthProvider,
-  signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail
 } from "firebase/auth";
+import {
+  getOAuthErrorMessage,
+  saveGoogleDriveToken,
+  signInWithOAuthProvider,
+} from "@/lib/oauth";
 import toast from "react-hot-toast";
 
 const getAuthErrorMessage = (error: unknown, mode: "login" | "signup") => {
@@ -53,27 +55,20 @@ export default function Login() {
 
   const githubLogin = async () => {
     try {
-      const provider = new GithubAuthProvider();
-      provider.addScope("read:user");
-      provider.addScope("user:email");
-      await signInWithPopup(auth, provider);
+      await signInWithOAuthProvider(auth, "github");
       router.push("/home");
-    } catch {
-      toast.error("GitHub login failed.");
+    } catch (err) {
+      toast.error(getOAuthErrorMessage(err, "github"));
     }
   };
 
   const googleLogin = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      provider.addScope("https://www.googleapis.com/auth/drive.file");
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      const accessToken = credential?.accessToken;
-      if (accessToken) localStorage.setItem("drive_token", accessToken);
+      const result = await signInWithOAuthProvider(auth, "google");
+      saveGoogleDriveToken(result);
       router.push("/home");
-    } catch {
-      toast.error("Google login failed.");
+    } catch (err) {
+      toast.error(getOAuthErrorMessage(err, "google"));
     }
   };
 
